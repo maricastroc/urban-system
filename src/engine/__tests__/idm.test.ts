@@ -15,12 +15,14 @@ import {
 const P = DEFAULT_VPARAMS[0];
 
 // A single straight lane, no connections (Etapa 2: no intersection).
+// Physics tests use a very long lane so cars never reach the end (despawn, a FASE 3 concern,
+// is exercised separately in flow.test.ts).
 function laneGraph(length = 200, speedLimit = 13.9) {
   return buildLaneGraph([{ length, speedLimit, fromNode: 0, toNode: 1 }]);
 }
 
-// Place an agent directly on a lane. Spawn is a later Etapa, so tests wire agents by hand.
-// Cars must be placed front-first (largest s first) to match the descending-s lane order.
+// Place an agent directly on a lane. Spawn is exercised elsewhere, so physics tests wire agents
+// by hand. Cars must be placed front-first (largest s first) to match the descending-s order.
 function place(world: World, lane: number, s: number, v: number, type = 0): number {
   const id = allocAgent(world.agents);
   world.agents.s[id] = s;
@@ -46,7 +48,7 @@ describe('IDM acceleration (pure)', () => {
 
 describe('integration on a single lane', () => {
   it('a lone car accelerates toward its desired speed, monotonically, without exceeding it', () => {
-    const world = createWorld(laneGraph(), 4);
+    const world = createWorld(laneGraph(100_000), 4);
     const v0 = world.graph.speedLimit[0] * P.v0Factor;
     const car = place(world, 0, 0, 0);
 
@@ -89,7 +91,7 @@ describe('integration on a single lane', () => {
   });
 
   it('a follower never overlaps the leader while both accelerate from rest', () => {
-    const world = createWorld(laneGraph(400), 8);
+    const world = createWorld(laneGraph(100_000), 8);
     const leader = place(world, 0, 30, 0);
     const follower = place(world, 0, 0, 0);
 
@@ -103,7 +105,7 @@ describe('integration on a single lane', () => {
 
   it('is deterministic: identical setups match bit-for-bit after many ticks', () => {
     const build = () => {
-      const w = createWorld(laneGraph(), 8);
+      const w = createWorld(laneGraph(100_000), 8);
       place(w, 0, 40, 0);
       place(w, 0, 10, 6);
       return w;

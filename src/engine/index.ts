@@ -8,5 +8,8 @@ export * from './agents';
 export * from './laneList';
 export * from './neighbors';
 export * from './idm';
+export * from './rng';
+export * from './spawn';
+export * from './movement';
 export * from './world';
 export * from './simulation';

@@ -2,6 +2,8 @@ import type { World } from './world';
 import { NONE } from './types';
 import { findLeader } from './neighbors';
 import { idmAcceleration, integrate } from './idm';
+import { spawn } from './spawn';
+import { advance } from './movement';
 
 /**
  * FASE 1 — compute every agent's acceleration from the current state.
@@ -34,16 +36,12 @@ function integrateAgents(world: World): void {
   }
 }
 
-/**
- * Advance the simulation by one fixed step (design doc §G).
- * Spawn, lane transitions/despawn and metrics arrive in later Etapas.
- */
+/** Advance the simulation by one fixed step (design doc §G). */
 export function tick(world: World): void {
-  // FASE 0 — demand injection (spawn)      [next: spawn]
+  spawn(world); // FASE 0 — demand injection
   computeAccelerations(world); // FASE 1 — accelerations, read-only
   integrateAgents(world); // FASE 2 — integration, write
-  // FASE 3 — lane transitions & despawn    [next: movement]
-  // metrics                                [next: metrics]
+  advance(world); // FASE 3 — lane transitions & despawn (records metrics)
 
   world.time += world.dt;
   world.tickCount += 1;

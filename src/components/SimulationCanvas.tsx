@@ -2,12 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { tick } from '@/engine';
-import { createScene, pump, type Scene } from '@/render/scene';
+import { createScene, setDemandRate, type Scene } from '@/render/scene';
 import { drawScene, type RenderCar } from '@/render/renderer';
 
 const SIM_DT = 0.2; // must match the engine's fixed timestep
 const MAX_STEPS = 5; // cap catch-up per frame to avoid a spiral of death
-const DEFAULT_CARS = 12;
+const DEFAULT_DEMAND = 8; // slider units; rate = units * 0.1 cars/second
+
+function unitsToRate(units: number): number {
+  return units * 0.1;
+}
 
 export function SimulationCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -21,18 +25,21 @@ export function SimulationCanvas() {
 
   const playingRef = useRef(true);
   const speedRef = useRef(1);
-  const maxCarsRef = useRef(DEFAULT_CARS);
 
   const [playing, setPlaying] = useState(true);
   const [speed, setSpeed] = useState(1);
-  const [maxCars, setMaxCars] = useState(DEFAULT_CARS);
+  const [demand, setDemand] = useState(DEFAULT_DEMAND);
 
   useEffect(() => void (playingRef.current = playing), [playing]);
   useEffect(() => void (speedRef.current = speed), [speed]);
-  useEffect(() => void (maxCarsRef.current = maxCars), [maxCars]);
 
-  const initScene = useCallback((cars: number) => {
-    const scene = createScene(cars);
+  // Tune demand live on the running scene, no rebuild needed.
+  useEffect(() => {
+    if (sceneRef.current) setDemandRate(sceneRef.current, unitsToRate(demand));
+  }, [demand]);
+
+  const initScene = useCallback((units: number) => {
+    const scene = createScene(unitsToRate(units));
     sceneRef.current = scene;
     prevSRef.current = new Float32Array(scene.world.agents.capacity);
     prevActiveRef.current = new Uint8Array(scene.world.agents.capacity);
@@ -41,10 +48,10 @@ export function SimulationCanvas() {
     accRef.current = 0;
   }, []);
 
-  const reset = useCallback(() => initScene(maxCarsRef.current), [initScene]);
+  const reset = useCallback(() => initScene(demand), [initScene, demand]);
 
   useEffect(() => {
-    initScene(maxCarsRef.current);
+    initScene(DEFAULT_DEMAND);
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -79,7 +86,6 @@ export function SimulationCanvas() {
         prevS.set(agents.s);
         prevActive.set(agents.active);
         tick(world);
-        pump(scene, maxCarsRef.current);
         accRef.current -= SIM_DT;
         steps += 1;
       }
@@ -91,7 +97,7 @@ export function SimulationCanvas() {
       for (let id = 0; id < agents.capacity; id++) {
         if (!agents.active[id]) continue;
         const cur = agents.s[id];
-        // Interpolate only cars present in both snapshots; spawns render at their current spot.
+        // Interpolate only cars present in both snapshots; fresh spawns render at their spot.
         const s = prevActive[id] ? prevS[id] + (cur - prevS[id]) * alpha : cur;
         cars.push({
           lane: agents.lane[id],
@@ -106,7 +112,8 @@ export function SimulationCanvas() {
 
       if (statsRef.current) {
         const avg = cars.length ? sumV / cars.length : 0;
-        statsRef.current.textContent = `${cars.length} cars · avg ${(avg * 3.6).toFixed(0)} km/h`;
+        statsRef.current.textContent =
+          `${cars.length} cars · avg ${(avg * 3.6).toFixed(0)} km/h · ${world.metrics.completedTrips} done`;
       }
 
       raf = requestAnimationFrame(loop);
@@ -153,16 +160,18 @@ export function SimulationCanvas() {
           ))}
         </div>
         <label className="flex items-center gap-2 text-neutral-300">
-          Density
+          Demand
           <input
             type="range"
-            min={3}
-            max={22}
-            value={maxCars}
-            onChange={(e) => setMaxCars(Number(e.target.value))}
+            min={0}
+            max={20}
+            value={demand}
+            onChange={(e) => setDemand(Number(e.target.value))}
             className="accent-emerald-500"
           />
-          <span className="w-6 tabular-nums text-neutral-400">{maxCars}</span>
+          <span className="w-16 tabular-nums text-neutral-400">
+            {unitsToRate(demand).toFixed(1)}/s
+          </span>
         </label>
         <span ref={statsRef} className="ml-auto tabular-nums text-neutral-400" />
       </div>
