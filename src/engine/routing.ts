@@ -6,9 +6,17 @@ import type { RouteRef, World } from './world';
  * is the length of the lane you traverse plus the junction crossing). This is Dijkstra — i.e.
  * A* with a zero heuristic; a Euclidean heuristic slots in here once node coordinates exist.
  *
+ * `closed`, if given, marks lanes to route around (a Scenario-Control closure): edges leading into
+ * a closed lane are ignored, so the path detours. `from` itself is never treated as closed.
+ *
  * Returns the lane sequence [from, ..., to], or null if `to` is unreachable from `from`.
  */
-export function computeRoute(graph: LaneGraph, from: number, to: number): number[] | null {
+export function computeRoute(
+  graph: LaneGraph,
+  from: number,
+  to: number,
+  closed?: Uint8Array,
+): number[] | null {
   const n = graph.laneCount;
   const g = new Float64Array(n).fill(Infinity);
   const prev = new Int32Array(n).fill(-1);
@@ -26,6 +34,7 @@ export function computeRoute(graph: LaneGraph, from: number, to: number): number
     for (let c = graph.connStart[u]; c < graph.connEnd[u]; c++) {
       const conn = graph.connections[c];
       const v = conn.toLane;
+      if (closed && closed[v] === 1) continue; // route around a closed lane
       const cost = g[u] + graph.length[u] + conn.length;
       if (cost < g[v]) {
         g[v] = cost;

@@ -1,11 +1,31 @@
-import { buildLaneGraph, type LaneGraph, type ConnectionSpec, type LaneSpec } from '@/engine';
+import {
+  buildLaneGraph,
+  connectionFromTo,
+  type LaneGraph,
+  type ConnectionSpec,
+  type LaneSpec,
+} from '@/engine';
 import type { LaneGeometry, Point } from './geometry';
+
+/** One incoming approach at a junction: its lane and the movements (straight, turn) leaving it. */
+export interface JunctionApproach {
+  readonly fromLane: number;
+  readonly conns: number[]; // connection ids, ordered [straight, turn]
+}
+
+/** An intersection, with everything the UI needs to hit-test it and control it. */
+export interface Junction {
+  readonly node: string;
+  readonly pos: Point; // world-space centre (m)
+  readonly approaches: JunctionApproach[]; // [H-in, V-in]
+}
 
 export interface Grid {
   readonly graph: LaneGraph;
   readonly geometry: LaneGeometry;
   readonly sources: number[]; // perimeter entry lanes
   readonly sinks: number[]; // perimeter exit lanes
+  readonly junctions: Junction[]; // interior intersections
 }
 
 interface Seg {
@@ -72,15 +92,37 @@ export function buildGrid(rows: number, cols: number, block = 90, speedLimit = 1
     }
   }
 
-  const laneSpecs: LaneSpec[] = segs.map(() => ({
+  // Assign every distinct node string a stable integer id so the graph is self-describing.
+  const nodeIds = new Map<string, number>();
+  const nodeId = (name: string): number => {
+    let id = nodeIds.get(name);
+    if (id === undefined) {
+      id = nodeIds.size;
+      nodeIds.set(name, id);
+    }
+    return id;
+  };
+
+  const laneSpecs: LaneSpec[] = segs.map((s) => ({
     length: B,
     speedLimit,
-    fromNode: 0,
-    toNode: 0,
+    fromNode: nodeId(s.startNode),
+    toNode: nodeId(s.endNode),
   }));
 
   const find = (axis: 'H' | 'V', where: 'start' | 'end', node: string): number =>
     segs.findIndex((s) => s.axis === axis && (where === 'start' ? s.startNode : s.endNode) === node);
+
+  // Interior intersections, captured as we wire their movements so the UI can control them.
+  interface JDesc {
+    node: string;
+    pos: Point;
+    hIn: number;
+    hOut: number;
+    vIn: number;
+    vOut: number;
+  }
+  const jdescs: JDesc[] = [];
 
   const connSpecs: ConnectionSpec[] = [];
   for (let r = 0; r < rows; r++) {
@@ -103,8 +145,22 @@ export function buildGrid(rows: number, cols: number, block = 90, speedLimit = 1
       connSpecs.push({ fromLane: hIn, toLane: vOut, rank: 3, conflictsWith: hConflicts }); // turn
       connSpecs.push({ fromLane: vIn, toLane: vOut, rank: 2, conflictsWith: vConflicts }); // straight
       connSpecs.push({ fromLane: vIn, toLane: hOut, rank: 1, conflictsWith: vConflicts }); // turn
+      jdescs.push({ node, pos: { x: c * B, y: r * B }, hIn, hOut, vIn, vOut });
     }
   }
+
+  const graph = buildLaneGraph(laneSpecs, connSpecs);
+
+  // Resolve each junction's connection indices (straight before turn, for a consistent priority
+  // swap) now that the CSR layout is fixed.
+  const junctions: Junction[] = jdescs.map((j) => ({
+    node: j.node,
+    pos: j.pos,
+    approaches: [
+      { fromLane: j.hIn, conns: [connectionFromTo(graph, j.hIn, j.hOut), connectionFromTo(graph, j.hIn, j.vOut)] },
+      { fromLane: j.vIn, conns: [connectionFromTo(graph, j.vIn, j.vOut), connectionFromTo(graph, j.vIn, j.hOut)] },
+    ],
+  }));
 
   const geometry: LaneGeometry = { a: segs.map((s) => s.a), b: segs.map((s) => s.b) };
   const sources: number[] = [];
@@ -114,5 +170,5 @@ export function buildGrid(rows: number, cols: number, block = 90, speedLimit = 1
     if (s.endNode.startsWith('p:')) sinks.push(i);
   });
 
-  return { graph: buildLaneGraph(laneSpecs, connSpecs), geometry, sources, sinks };
+  return { graph, geometry, sources, sinks, junctions };
 }

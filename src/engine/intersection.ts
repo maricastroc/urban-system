@@ -50,12 +50,13 @@ export function connectionFromTo(graph: LaneGraph, from: number, to: number): nu
  * movement never yields — there is always someone who may go, hence no deadlock.
  */
 export function mustYield(world: World, c: number): boolean {
-  const { graph, agents, occ } = world;
+  const { graph, agents, occ, control } = world;
   const conn = graph.connections[c];
+  const myRank = control.rank[c]; // effective rank (a priority flip may have swapped it)
 
   for (const c2 of conn.conflicts) {
     const other = graph.connections[c2];
-    if (other.rank <= conn.rank) continue; // only yield to strictly higher priority
+    if (control.rank[c2] <= myRank) continue; // only yield to strictly higher priority
 
     const k = occ.head[other.fromLane]; // nearest car to the junction on the conflicting approach
     if (k === NONE) continue;

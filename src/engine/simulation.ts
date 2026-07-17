@@ -4,6 +4,7 @@ import { findLeader } from './neighbors';
 import { idmAcceleration, integrate } from './idm';
 import { spawn } from './spawn';
 import { advance } from './movement';
+import { updateSignals } from './control';
 
 /**
  * FASE 1 — compute every agent's acceleration from the current state.
@@ -38,6 +39,7 @@ function integrateAgents(world: World): void {
 
 /** Advance the simulation by one fixed step (design doc §G). */
 export function tick(world: World): void {
+  updateSignals(world); // FASE S — advance traffic-signal phases (before decisions read them)
   spawn(world); // FASE 0 — demand injection
   computeAccelerations(world); // FASE 1 — accelerations, read-only
   integrateAgents(world); // FASE 2 — integration, write

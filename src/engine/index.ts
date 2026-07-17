@@ -6,6 +6,7 @@ export * from './constants';
 export * from './laneGraph';
 export * from './agents';
 export * from './laneList';
+export * from './control';
 export * from './intersection';
 export * from './routing';
 export * from './neighbors';

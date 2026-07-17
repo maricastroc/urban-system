@@ -1,5 +1,6 @@
 import { createAgentStore, type AgentStore } from './agents';
 import { createLaneOccupancy, type LaneOccupancy } from './laneList';
+import { createControl, type ScenarioControl } from './control';
 import { DT, DEFAULT_VPARAMS } from './constants';
 import type { LaneGraph } from './laneGraph';
 import type { LaneId, VParams } from './types';
@@ -15,7 +16,7 @@ export interface SpawnSource {
   readonly lane: LaneId;
   rate: number; // mutable so demand can be tuned live
   readonly speed?: number; // entry speed (m/s); defaults to 0
-  readonly routes?: readonly RouteRef[]; // candidate routes; empty -> single-exit fallback
+  routes?: readonly RouteRef[]; // candidate routes, re-pointable live (destinations / detours)
 }
 
 /** Running totals accumulated as trips complete. */
@@ -34,6 +35,7 @@ export interface World {
   readonly graph: LaneGraph;
   readonly agents: AgentStore;
   readonly occ: LaneOccupancy;
+  readonly control: ScenarioControl; // live experiment overlay (closures, incidents, signals, priority)
   readonly vparams: readonly VParams[];
   readonly dt: number;
   demand: SpawnSource[]; // spawn configuration (FASE 0), tunable live
@@ -54,6 +56,7 @@ export function createWorld(
     graph,
     agents: createAgentStore(capacity),
     occ: createLaneOccupancy(graph.laneCount),
+    control: createControl(graph),
     vparams,
     dt: DT,
     demand: [],
