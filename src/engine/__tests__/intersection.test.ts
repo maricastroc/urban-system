@@ -12,21 +12,17 @@ import {
   type World,
 } from '../index';
 
-// A priority crossing. Lanes: 0 = A (major in), 1 = C (major out),
-//                             2 = B (minor in), 3 = D (minor out).
-// A->C (rank 2) and B->D (rank 1) cross at the node and conflict.
-// Connection build order groups by fromLane, so A->C is index 0 and B->D is index 1.
 function crossing() {
   return buildLaneGraph(
     [
-      { length: 100, speedLimit: 16, fromNode: 0, toNode: 1 }, // A
-      { length: 100, speedLimit: 16, fromNode: 1, toNode: 2 }, // C (sink)
-      { length: 100, speedLimit: 16, fromNode: 3, toNode: 1 }, // B
-      { length: 100, speedLimit: 16, fromNode: 1, toNode: 4 }, // D (sink)
+      { length: 100, speedLimit: 16, fromNode: 0, toNode: 1 },
+      { length: 100, speedLimit: 16, fromNode: 1, toNode: 2 },
+      { length: 100, speedLimit: 16, fromNode: 3, toNode: 1 },
+      { length: 100, speedLimit: 16, fromNode: 1, toNode: 4 },
     ],
     [
-      { fromLane: 0, toLane: 1, rank: 2, conflicts: [1] }, // A->C major (index 0)
-      { fromLane: 2, toLane: 3, rank: 1, conflicts: [0] }, // B->D minor (index 1)
+      { fromLane: 0, toLane: 1, rank: 2, conflicts: [1] },
+      { fromLane: 2, toLane: 3, rank: 1, conflicts: [0] },
     ],
   );
 }
@@ -61,52 +57,52 @@ describe('intersection: nextConnection', () => {
     const onC = put(w, 1, 50, 0);
     const onB = put(w, 2, 50, 0);
     const onD = put(w, 3, 50, 0);
-    expect(nextConnection(w, onA)).not.toBe(NONE); // A -> C
-    expect(nextConnection(w, onC)).toBe(NONE); // C is a sink
-    expect(nextConnection(w, onB)).not.toBe(NONE); // B -> D
-    expect(nextConnection(w, onD)).toBe(NONE); // D is a sink
+    expect(nextConnection(w, onA)).not.toBe(NONE);
+    expect(nextConnection(w, onC)).toBe(NONE);
+    expect(nextConnection(w, onB)).not.toBe(NONE);
+    expect(nextConnection(w, onD)).toBe(NONE);
   });
 });
 
 describe('intersection: strict-priority gap acceptance', () => {
   it('the minor road yields only when a major car is approaching', () => {
     const w = createWorld(crossing(), 32);
-    const b = put(w, 2, 99, 2); // a B car at the end of its lane
-    const bConn = nextConnection(w, b); // the movement B is about to make (B->D)
-    expect(mustYield(w, bConn)).toBe(false); // no major traffic -> go
+    const b = put(w, 2, 99, 2);
+    const bConn = nextConnection(w, b);
+    expect(mustYield(w, bConn)).toBe(false);
 
-    put(w, 0, 90, 14); // a fast A car near the junction (tta ~0.7s < T_SAFE)
-    expect(mustYield(w, bConn)).toBe(true); // major approaching -> yield
+    put(w, 0, 90, 14);
+    expect(mustYield(w, bConn)).toBe(true);
   });
 
   it('the major road never yields to the minor road', () => {
     const w = createWorld(crossing(), 32);
-    const a = put(w, 0, 99, 5); // A car
-    put(w, 2, 99, 14); // fast B car right at the junction
-    expect(mustYield(w, nextConnection(w, a))).toBe(false); // A (rank 2) ignores B (rank 1)
+    const a = put(w, 0, 99, 5);
+    put(w, 2, 99, 14);
+    expect(mustYield(w, nextConnection(w, a))).toBe(false);
   });
 });
 
 describe('intersection: lane transition (moveToLane)', () => {
   it('a car with no conflict crosses A->C and completes its trip', () => {
     const w = createWorld(crossing(), 32);
-    put(w, 0, 0, 0); // one A car, no B traffic
+    put(w, 0, 0, 0);
 
     let sawOnC = false;
     for (let n = 0; n < 200; n++) {
       tick(w);
       if (w.occ.head[1] !== NONE) sawOnC = true;
     }
-    expect(sawOnC).toBe(true); // it transitioned onto C
-    expect(w.metrics.completedTrips).toBe(1); // and finished
+    expect(sawOnC).toBe(true);
+    expect(w.metrics.completedTrips).toBe(1);
   });
 });
 
 describe('intersection: whole junction under demand', () => {
   const build = (seed: number) => {
     const w = createWorld(crossing(), 64, undefined, seed);
-    w.demand.push({ lane: 0, rate: 0.35 }); // major
-    w.demand.push({ lane: 2, rate: 0.45 }); // minor
+    w.demand.push({ lane: 0, rate: 0.35 });
+    w.demand.push({ lane: 2, rate: 0.45 });
     return w;
   };
 
@@ -120,8 +116,8 @@ describe('intersection: whole junction under demand', () => {
       if (w.occ.head[3] !== NONE) sawD = true;
       for (let lane = 0; lane < 4; lane++) expect(noOverlap(w, lane)).toBe(true);
     }
-    expect(sawC).toBe(true); // A->C happened
-    expect(sawD).toBe(true); // B->D happened (minor road found gaps)
+    expect(sawC).toBe(true);
+    expect(sawD).toBe(true);
     expect(w.metrics.completedTrips).toBeGreaterThan(0);
   });
 

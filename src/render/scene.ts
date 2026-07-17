@@ -21,15 +21,14 @@ import type { LaneGeometry } from './geometry';
 
 const CAPACITY = 256;
 const SEED = 0x9e3779b9;
-const GRID = 5; // rows == cols — a denser mesh reads as a system, not a diagram
+const GRID = 5;
 
-/** Live per-entry demand configuration, sitting on top of the engine's SpawnSource. */
 export interface SourceCtl {
   readonly lane: number;
-  readonly src: SpawnSource; // the engine demand entry this controls
-  readonly reachable: number[]; // sinks reachable in the open network (the menu of destinations)
-  rate: number; // cars/second
-  allowed: Set<number>; // enabled destinations (subset of `reachable`)
+  readonly src: SpawnSource;
+  readonly reachable: number[]; // sinks reachable in the open network
+  rate: number;
+  allowed: Set<number>; // enabled destinations, a subset of `reachable`
 }
 
 export interface Scene {
@@ -38,15 +37,9 @@ export interface Scene {
   readonly junctions: Junction[];
   readonly sources: SourceCtl[];
   readonly sinks: number[];
-  readonly signals: (SignalController | null)[]; // per junction, created lazily
+  readonly signals: (SignalController | null)[];
 }
 
-/**
- * A one-way Manhattan grid wired for live experimentation. Cars enter at the perimeter, are routed
- * (shortest path, detouring around closures) to one of their enabled destinations, and give way or
- * obey signals at each junction. Everything the control panel touches — demand, destinations,
- * closures, incidents, priority, signals — is applied through the helpers below, never by rebuilding.
- */
 export function createScene(rate: number): Scene {
   const { graph, geometry, sources, sinks, junctions } = buildGrid(GRID, GRID);
   const world = createWorld(graph, CAPACITY, undefined, SEED);
@@ -59,8 +52,7 @@ export function createScene(rate: number): Scene {
     });
     const src: SpawnSource = { lane, rate, routes: [] };
     world.demand.push(src);
-    const ctl: SourceCtl = { lane, src, reachable, rate, allowed: new Set(reachable) };
-    srcCtls.push(ctl);
+    srcCtls.push({ lane, src, reachable, rate, allowed: new Set(reachable) });
   }
 
   const scene: Scene = {
@@ -75,12 +67,7 @@ export function createScene(rate: number): Scene {
   return scene;
 }
 
-/**
- * Recompute every entry's candidate routes from its enabled destinations, detouring around any
- * closed lanes. Routes are appended to the shared buffer (append-only, so in-flight cars keep their
- * slices); each source is re-pointed at its fresh set. A source with no reachable destination is
- * left with an empty route list, which `spawn` treats as "drop the arrival".
- */
+// Routes append to the shared buffer (append-only), so in-flight cars keep their existing slices.
 export function applyRoutes(scene: Scene): void {
   const { world } = scene;
   const closed = world.control.laneClosed;
@@ -94,34 +81,29 @@ export function applyRoutes(scene: Scene): void {
   }
 }
 
-/** Tune every entry's inflow to the same rate (the global demand slider). */
 export function setDemandRate(scene: Scene, rate: number): void {
   for (const ctl of scene.sources) setSourceRate(scene, ctl, rate);
 }
 
-/** Tune one entry's inflow. */
 export function setSourceRate(scene: Scene, ctl: SourceCtl, rate: number): void {
   ctl.rate = rate;
   ctl.src.rate = rate;
 }
 
-/** Enable or disable a single destination for one entry, then re-route it. */
 export function toggleDestination(scene: Scene, ctl: SourceCtl, sink: number): void {
   if (ctl.allowed.has(sink)) ctl.allowed.delete(sink);
   else ctl.allowed.add(sink);
   applyRoutes(scene);
 }
 
-/** Close or reopen a lane; new traffic reroutes around a closure, in-flight cars queue at it. */
 export function toggleLaneClosed(scene: Scene, lane: number): boolean {
   const closed = scene.world.control.laneClosed[lane] === 1;
   if (closed) openLane(scene.world.control, lane);
   else closeLane(scene.world.control, lane);
-  applyRoutes(scene); // closures change everyone's shortest paths
+  applyRoutes(scene);
   return !closed;
 }
 
-/** Toggle a stopped incident at position `s` on a lane (no rerouting — it is a surprise). */
 export function toggleIncident(scene: Scene, lane: number, s: number): boolean {
   const has = scene.world.control.incidentAt[lane] < Infinity;
   if (has) engineClearIncident(scene.world.control, lane);
@@ -129,13 +111,11 @@ export function toggleIncident(scene: Scene, lane: number, s: number): boolean {
   return !has;
 }
 
-/** Flip which approach has priority at a junction (only meaningful while it is unsignalized). */
 export function flipPriority(scene: Scene, j: number): void {
   const [h, v] = scene.junctions[j].approaches;
   swapRanks(scene.world.control, h.conns, v.conns);
 }
 
-/** Turn a junction's signals on (2-phase H/V) or off (back to priority give-way). */
 export function toggleSignal(scene: Scene, j: number, seconds = DEFAULT_SIGNAL_SECONDS): boolean {
   const existing = scene.signals[j];
   if (existing && existing.enabled) {
@@ -157,11 +137,10 @@ export interface Stats {
   cars: number;
   avgSpeedKmh: number;
   completedTrips: number;
-  avgTravelTime: number; // seconds per completed trip
+  avgTravelTime: number;
   time: number;
 }
 
-/** Read a snapshot of the live aggregate metrics (pure). */
 export function sampleStats(world: World): Stats {
   const { agents } = world;
   let sum = 0;

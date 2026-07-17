@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildLaneGraph, createWorld, tick, run, DT } from '../index';
 
-// Minimal two-lane network: lane 0 -> lane 1 through node 1, plus one connection.
 function tinyGraph() {
   return buildLaneGraph(
     [
@@ -26,9 +25,9 @@ describe('LaneGraph builder', () => {
     const c = g.connections[g.connStart[0]];
     expect(c.fromLane).toBe(0);
     expect(c.toLane).toBe(1);
-    expect(c.length).toBe(0); // defaulted
-    expect(c.rank).toBe(0); // defaulted
-    expect(c.conflicts).toEqual([]); // defaulted
+    expect(c.length).toBe(0);
+    expect(c.rank).toBe(0);
+    expect(c.conflicts).toEqual([]);
   });
 
   it('rejects connections that reference out-of-range lanes', () => {

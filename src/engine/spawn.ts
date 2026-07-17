@@ -5,14 +5,6 @@ import { nextRandom } from './rng';
 import { allocAgent } from './agents';
 import { pushBack } from './laneList';
 
-/**
- * FASE 0 — admit new vehicles from demand (design doc §G.1).
- *
- * Each source is a Bernoulli arrival per tick with p = rate * dt (a discrete Poisson
- * approximation). An arrival that finds the source occupied is dropped. If the source declares
- * candidate routes, one is chosen uniformly at random; otherwise the car has no route and falls
- * back to single-exit following. Deterministic given the World's seed and demand order.
- */
 export function spawn(world: World): void {
   const { agents, occ, dt } = world;
 

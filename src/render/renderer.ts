@@ -1,15 +1,26 @@
 import type { Scene } from './scene';
 import { fitCamera, project, placementAt, type LaneGeometry } from './geometry';
 import { SIGNAL_GREEN, SIGNAL_RED } from '@/engine';
+import {
+  thermal,
+  asphalt,
+  mix,
+  rgba,
+  clamp,
+  clamp01,
+  THERMAL_HOT,
+  THERMAL_AMBER,
+  THERMAL_COOL,
+  type RGB,
+} from './thermal';
 
 export interface RenderCar {
   readonly lane: number;
-  readonly s: number; // interpolated longitudinal position (m)
-  readonly length: number; // vehicle length (m)
+  readonly s: number;
+  readonly length: number;
   readonly speedFrac: number; // 0 = stopped, 1 = at desired speed
 }
 
-/** What the interactive canvas currently has selected or hovered (-1 = none). */
 export interface RenderOverlay {
   readonly selectedLane: number;
   readonly hoverLane: number;
@@ -29,14 +40,7 @@ const NO_OVERLAY: RenderOverlay = {
 const ACCENT: RGB = [96, 165, 250]; // interaction / focus (matches --accent)
 const STOP_EPS = 0.14; // speedFrac below which a car counts as "queued"
 
-/**
- * Draw the mesh as a living thermal flow-field, not a diagram (design doc §18).
- *
- * One colour language runs through everything — cool = flowing, hot = suffering. Roads carry an
- * animated flow field so direction and load read without cars; junctions are nodes that breathe
- * with activity and warm with queues; cars trail; and selecting anything spotlights it while the
- * rest of the network recedes. Everything reads as implicit information, nothing is pure decoration.
- */
+// Draw the mesh as a thermal flow-field (design doc §18).
 export function drawScene(
   ctx: CanvasRenderingContext2D,
   width: number,
@@ -52,7 +56,6 @@ export function drawScene(
   const cam = fitCamera(geom, width, height);
   const now = overlay.now;
 
-  // ── Per-lane telemetry from the live cars: load, mean speed, queue. ──────
   const load = new Uint16Array(n);
   const sumSF = new Float32Array(n);
   const stopped = new Uint16Array(n);
@@ -61,9 +64,9 @@ export function drawScene(
     sumSF[c.lane] += clamp01(c.speedFrac);
     if (c.speedFrac < STOP_EPS) stopped[c.lane] += 1;
   }
-  const meanSF = (lane: number) => (load[lane] ? sumSF[lane] / load[lane] : 1); // empty = free-flowing
+  const meanSF = (lane: number) => (load[lane] ? sumSF[lane] / load[lane] : 1); // empty lane = free-flowing
 
-  // ── Focus set: the selection and its immediate network context. ─────────
+  // Focus set: the selection and its immediate network context (spotlight, rest dims).
   const hasSel = overlay.selectedLane >= 0 || overlay.selectedJunction >= 0;
   const focus = new Set<number>();
   if (overlay.selectedLane >= 0) focus.add(overlay.selectedLane);
@@ -75,7 +78,6 @@ export function drawScene(
   }
   const dimOf = (lane: number) => (hasSel && !focus.has(lane) ? 0.28 : 1);
 
-  // Precompute screen endpoints once.
   const A: Pt[] = new Array(n);
   const B: Pt[] = new Array(n);
   for (let i = 0; i < n; i++) {
@@ -85,7 +87,6 @@ export function drawScene(
 
   drawBackdrop(ctx, width, height, now);
 
-  // ── 1. Roads: curb + asphalt, warmed and haloed by congestion. ──────────
   const curbW = 7.4 * cam.scale;
   const roadW = 5 * cam.scale;
   ctx.lineCap = 'round';
@@ -104,7 +105,7 @@ export function drawScene(
     ctx.globalAlpha = d;
     if (cong > 0.05) {
       ctx.save();
-      ctx.shadowColor = rgba(thermal(1 - cong), 0.28 * cong * d); // heat reads as colour, not bloom
+      ctx.shadowColor = rgba(thermal(1 - cong), 0.28 * cong * d);
       ctx.shadowBlur = 5.5 * cong;
       strokeSeg(ctx, A[i], B[i], asphalt(cong), roadW);
       ctx.restore();
@@ -114,7 +115,6 @@ export function drawScene(
   }
   ctx.globalAlpha = 1;
 
-  // ── 2. Flow field: comets running downstream on every open lane. ────────
   for (let i = 0; i < n; i++) {
     if (control.laneClosed[i] === 1) continue;
     drawFlow(ctx, A[i], B[i], worldLen(geom, i), meanSF(i), load[i], now, {
@@ -125,7 +125,6 @@ export function drawScene(
 
   for (let i = 0; i < n; i++) if (control.laneClosed[i] === 1) drawBarrier(ctx, A[i], B[i], cam.scale);
 
-  // ── 3. Gateways. ────────────────────────────────────────────────────────
   for (const ctl of scene.sources) {
     const d = dir(A[ctl.lane], B[ctl.lane]);
     drawChevron(ctx, A[ctl.lane], d, thermal(1), dimOf(ctl.lane));
@@ -180,7 +179,6 @@ function drawBackdrop(ctx: CanvasRenderingContext2D, w: number, h: number, now: 
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, w, h);
 
-  // Central glow that breathes.
   const cg = ctx.createRadialGradient(w / 2, h * 0.42, 0, w / 2, h * 0.42, Math.min(w, h) * 0.5);
   cg.addColorStop(0, rgba([70, 110, 170], 0.05 + 0.02 * breathe));
   cg.addColorStop(1, rgba([70, 110, 170], 0));
@@ -215,11 +213,10 @@ function drawFlow(
   const uy = dy / sLen;
 
   const count = clamp(Math.round(wLen / 30), 1, 5);
-  const vWorld = (o.selected ? 16 : 9) * (0.32 + 0.68 * sf); // congested lanes crawl
+  const vWorld = (o.selected ? 16 : 9) * (0.32 + 0.68 * sf);
   const base = ((now / 1000) * (vWorld / wLen)) % 1;
   const col = o.selected ? ACCENT : thermal(sf);
   const loadNorm = clamp(load / 4, 0, 1);
-  // Ambient flow is a faint streak that belongs to the road — never a bright dot (that read as a car).
   const streakA = (o.selected ? 0.72 : 0.15 + 0.14 * loadNorm) * o.dim;
   const tailPx = (o.selected ? 15 : 11) * (0.5 + 0.5 * sf);
 
@@ -241,7 +238,6 @@ function drawFlow(
     ctx.lineTo(hx, hy);
     ctx.stroke();
 
-    // Only the selected (manipulated) road gets a small head, to accent it.
     if (o.selected) {
       ctx.beginPath();
       ctx.arc(hx, hy, 1.4, 0, Math.PI * 2);
@@ -267,7 +263,7 @@ function drawCar(
   ctx.globalAlpha = dim;
   ctx.shadowBlur = 0;
 
-  // Short directional micro-trail — a contained motion cue, clearly behind the body.
+  // Micro-trail behind the body — a motion cue.
   if (sf > 0.1) {
     const trail = 4 + 14 * sf;
     const g = ctx.createLinearGradient(-L / 2 - trail, 0, -L / 2, 0);
@@ -283,9 +279,7 @@ function drawCar(
     ctx.fill();
   }
 
-  // Agent body — a crisp luminous capsule carved out of the road glow by a dark separation
-  // shadow + edge, so it reads on any background; its nose is near-white (heading + identity),
-  // its tail keeps the speed hue. This is the agent layer, distinct from road/flow.
+  // Bright capsule carved from the road glow by a dark shadow + edge; near-white nose = heading.
   roundedRect(ctx, -L / 2, -W / 2, L, W, Math.min(W * 0.5, 3));
   ctx.shadowColor = 'rgba(2,4,8,0.9)';
   ctx.shadowBlur = 5;
@@ -320,13 +314,12 @@ function drawJunction(
   queue: number,
   o: JOpts,
 ): void {
-  const stress = clamp(queue / 6, 0, 1); // hot node = a junction that is backing up
+  const stress = clamp(queue / 6, 0, 1);
   const act = clamp(activity / 8, 0, 1);
   const nodeCol = stress > 0.02 ? thermal(1 - stress) : [150, 163, 180] as RGB;
   const r0 = 3.6;
   const breathe = 0.5 + 0.5 * Math.sin(o.now / 700 + j.pos.x);
 
-  // Activity halo.
   if (act > 0.02 || stress > 0.02) {
     ctx.save();
     ctx.shadowColor = rgba(nodeCol, 0.9);
@@ -335,14 +328,12 @@ function drawJunction(
     ctx.restore();
   }
 
-  // The node ring.
   ring(ctx, jp.x, jp.y, r0, rgba(nodeCol, 0.85), 1.5);
   ctx.beginPath();
   ctx.arc(jp.x, jp.y, 1.4, 0, Math.PI * 2);
   ctx.fillStyle = rgba(nodeCol, 0.9);
   ctx.fill();
 
-  // Per-approach indicators.
   for (const ap of j.approaches) {
     const a = o.A[ap.fromLane];
     const b = o.B[ap.fromLane];
@@ -371,7 +362,6 @@ function drawJunction(
     }
   }
 
-  // Priority tick on the major approach when unsignalized.
   if (!signalized) {
     let major = j.approaches[0];
     for (const ap of j.approaches) if (control.rank[ap.conns[0]] > control.rank[major.conns[0]]) major = ap;
@@ -388,16 +378,13 @@ function drawJunction(
     ctx.stroke();
   }
 
-  // Focus states.
   if (o.hovered && !o.selected) ring(ctx, jp.x, jp.y, r0 + 3, rgba(ACCENT, 0.45), 1.5);
   if (o.selected) {
     const t = (o.now / 1400) % 1;
-    ring(ctx, jp.x, jp.y, r0 + 2 + t * 9, rgba(ACCENT, 0.5 * (1 - t)), 1.6); // expanding sweep
+    ring(ctx, jp.x, jp.y, r0 + 2 + t * 9, rgba(ACCENT, 0.5 * (1 - t)), 1.6);
     ring(ctx, jp.x, jp.y, r0 + 2.5, rgba(ACCENT, 0.9), 1.6);
   }
 }
-
-/* ── Small drawing primitives ──────────────────────────────────────────── */
 
 function strokeSeg(ctx: CanvasRenderingContext2D, a: Pt, b: Pt, style: string, w: number): void {
   ctx.strokeStyle = style;
@@ -486,50 +473,7 @@ function roundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: num
   ctx.closePath();
 }
 
-/* ── Colour: one thermal language (cool = flowing, hot = suffering). ────── */
-
-type RGB = readonly [number, number, number];
 type Pt = { x: number; y: number };
-
-const THERMAL_HOT: RGB = [235, 92, 84];
-const THERMAL_AMBER: RGB = [230, 165, 78];
-const THERMAL_COOL: RGB = [116, 200, 214];
-const THERMAL_FREE: RGB = [120, 190, 224];
-const STOPS: readonly (readonly [number, RGB])[] = [
-  [0.0, THERMAL_HOT],
-  [0.42, THERMAL_AMBER],
-  [0.72, THERMAL_COOL],
-  [1.0, THERMAL_FREE],
-];
-
-/** Map t∈[0,1] (0 = stopped/jammed → hot, 1 = free → cool) to an RGB. */
-function thermal(t: number): RGB {
-  const x = clamp01(t);
-  for (let i = 1; i < STOPS.length; i++) {
-    if (x <= STOPS[i][0]) {
-      const [t0, c0] = STOPS[i - 1];
-      const [t1, c1] = STOPS[i];
-      return mix(c0, c1, (x - t0) / (t1 - t0));
-    }
-  }
-  return STOPS[STOPS.length - 1][1];
-}
-
-// Neutral dark asphalt, warmed as congestion rises — heat carried by hue so it needs no bloom.
-function asphalt(cong: number): string {
-  const base: RGB = [24, 29, 37];
-  const warm: RGB = [82, 45, 41];
-  return rgba(mix(base, warm, clamp01(cong)), 1);
-}
-
-function mix(a: RGB, b: RGB, t: number): RGB {
-  const k = clamp01(t);
-  return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
-}
-
-function rgba(c: RGB, a: number): string {
-  return `rgba(${Math.round(c[0])},${Math.round(c[1])},${Math.round(c[2])},${a})`;
-}
 
 function dir(a: Pt, b: Pt): Pt {
   const dx = b.x - a.x;
@@ -540,11 +484,4 @@ function dir(a: Pt, b: Pt): Pt {
 
 function worldLen(geom: LaneGeometry, lane: number): number {
   return Math.hypot(geom.b[lane].x - geom.a[lane].x, geom.b[lane].y - geom.a[lane].y) || 1;
-}
-
-function clamp(x: number, lo: number, hi: number): number {
-  return x < lo ? lo : x > hi ? hi : x;
-}
-function clamp01(x: number): number {
-  return x < 0 ? 0 : x > 1 ? 1 : x;
 }

@@ -6,11 +6,6 @@ import { spawn } from './spawn';
 import { advance } from './movement';
 import { updateSignals } from './control';
 
-/**
- * FASE 1 — compute every agent's acceleration from the current state.
- * Read-only on positions/speeds; writes only each agent's a[i]. Because it reads no a[],
- * the per-agent order does not matter — the step stays deterministic and order-independent.
- */
 function computeAccelerations(world: World): void {
   const { agents, occ, graph, vparams } = world;
   for (let lane = 0; lane < graph.laneCount; lane++) {
@@ -23,11 +18,6 @@ function computeAccelerations(world: World): void {
   }
 }
 
-/**
- * FASE 2 — integrate every agent using the a[i] computed in FASE 1.
- * Iterates front -> back per lane so the overlap guard inside integrate() sees the leader's
- * already-updated position, which guarantees no end-of-tick overlap.
- */
 function integrateAgents(world: World): void {
   const { agents, occ, graph } = world;
   for (let lane = 0; lane < graph.laneCount; lane++) {
@@ -37,19 +27,17 @@ function integrateAgents(world: World): void {
   }
 }
 
-/** Advance the simulation by one fixed step (design doc §G). */
 export function tick(world: World): void {
-  updateSignals(world); // FASE S — advance traffic-signal phases (before decisions read them)
-  spawn(world); // FASE 0 — demand injection
-  computeAccelerations(world); // FASE 1 — accelerations, read-only
-  integrateAgents(world); // FASE 2 — integration, write
-  advance(world); // FASE 3 — lane transitions & despawn (records metrics)
+  updateSignals(world);
+  spawn(world);
+  computeAccelerations(world);
+  integrateAgents(world);
+  advance(world);
 
   world.time += world.dt;
   world.tickCount += 1;
 }
 
-/** Convenience helper: run `ticks` steps in sequence. */
 export function run(world: World, ticks: number): void {
   for (let n = 0; n < ticks; n++) tick(world);
 }

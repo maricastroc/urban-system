@@ -14,15 +14,10 @@ import {
 
 const P = DEFAULT_VPARAMS[0];
 
-// A single straight lane, no connections (Etapa 2: no intersection).
-// Physics tests use a very long lane so cars never reach the end (despawn, a FASE 3 concern,
-// is exercised separately in flow.test.ts).
 function laneGraph(length = 200, speedLimit = 13.9) {
   return buildLaneGraph([{ length, speedLimit, fromNode: 0, toNode: 1 }]);
 }
 
-// Place an agent directly on a lane. Spawn is exercised elsewhere, so physics tests wire agents
-// by hand. Cars must be placed front-first (largest s first) to match the descending-s order.
 function place(world: World, lane: number, s: number, v: number, type = 0): number {
   const id = allocAgent(world.agents);
   world.agents.s[id] = s;
@@ -57,18 +52,18 @@ describe('integration on a single lane', () => {
     for (let n = 0; n < 400; n++) {
       tick(world);
       const v = world.agents.v[car];
-      expect(v).toBeGreaterThanOrEqual(prevV - 1e-6); // non-decreasing
+      expect(v).toBeGreaterThanOrEqual(prevV - 1e-6);
       prevV = v;
       maxV = Math.max(maxV, v);
     }
-    expect(maxV).toBeLessThanOrEqual(v0 + 1e-3); // never overshoots v0
-    expect(world.agents.v[car]).toBeGreaterThan(v0 * 0.98); // essentially reached it
+    expect(maxV).toBeLessThanOrEqual(v0 + 1e-3);
+    expect(world.agents.v[car]).toBeGreaterThan(v0 * 0.98);
   });
 
   it('a follower stops smoothly behind a stopped car: never reversing, never overlapping', () => {
     const world = createWorld(laneGraph(), 8);
     const leaderPos = 60;
-    const leader = place(world, 0, leaderPos, 0); // pinned as a stopped obstacle
+    const leader = place(world, 0, leaderPos, 0);
     const follower = place(world, 0, 20, 8);
 
     let minV = Infinity;
@@ -83,11 +78,11 @@ describe('integration on a single lane', () => {
       minV = Math.min(minV, world.agents.v[follower]);
     }
 
-    expect(minV).toBeGreaterThanOrEqual(0); // never reversed
-    expect(minGap).toBeGreaterThan(-EPS); // never overlapped
-    expect(world.agents.v[follower]).toBeCloseTo(0, 2); // came to rest
+    expect(minV).toBeGreaterThanOrEqual(0);
+    expect(minGap).toBeGreaterThan(-EPS);
+    expect(world.agents.v[follower]).toBeCloseTo(0, 2); 
     const finalGap = leaderPos - world.agents.s[follower] - P.length;
-    expect(Math.abs(finalGap - P.s0)).toBeLessThan(0.2); // settled near the jam gap s0
+    expect(Math.abs(finalGap - P.s0)).toBeLessThan(0.2);
   });
 
   it('a follower never overlaps the leader while both accelerate from rest', () => {

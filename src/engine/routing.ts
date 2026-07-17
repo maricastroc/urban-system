@@ -1,16 +1,6 @@
 import type { LaneGraph } from './laneGraph';
 import type { RouteRef, World } from './world';
 
-/**
- * Shortest-path routing over the lane graph (lanes are nodes, connections are edges, edge cost
- * is the length of the lane you traverse plus the junction crossing). This is Dijkstra — i.e.
- * A* with a zero heuristic; a Euclidean heuristic slots in here once node coordinates exist.
- *
- * `closed`, if given, marks lanes to route around (a Scenario-Control closure): edges leading into
- * a closed lane are ignored, so the path detours. `from` itself is never treated as closed.
- *
- * Returns the lane sequence [from, ..., to], or null if `to` is unreachable from `from`.
- */
 export function computeRoute(
   graph: LaneGraph,
   from: number,
@@ -34,7 +24,7 @@ export function computeRoute(
     for (let c = graph.connStart[u]; c < graph.connEnd[u]; c++) {
       const conn = graph.connections[c];
       const v = conn.toLane;
-      if (closed && closed[v] === 1) continue; // route around a closed lane
+      if (closed && closed[v] === 1) continue;
       const cost = g[u] + graph.length[u] + conn.length;
       if (cost < g[v]) {
         g[v] = cost;
@@ -52,14 +42,12 @@ export function computeRoute(
   return path[0] === from ? path : null;
 }
 
-/** Append a route's lane sequence to the world's shared buffer and return its slice. */
 export function addRoute(world: World, lanes: readonly number[]): RouteRef {
   const start = world.routeBuffer.length;
   for (const lane of lanes) world.routeBuffer.push(lane);
   return { start, end: world.routeBuffer.length };
 }
 
-/** Minimal binary min-heap keyed by a numeric cost, over integer items (lane ids). */
 class MinHeap {
   private items: number[] = [];
   private keys: number[] = [];

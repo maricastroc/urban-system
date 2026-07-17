@@ -11,7 +11,6 @@ function withDemand(rate: number, seed = 1): World {
   return world;
 }
 
-// Walk the single lane front -> back and check strict descending s with non-negative gaps.
 function noOverlap(world: World): boolean {
   const { agents, occ, vparams } = world;
   let prev = -1;
@@ -39,7 +38,7 @@ describe('FASE 0 — demand-driven spawn', () => {
   });
 
   it('never overlaps cars at the source, even under very high demand (room-gated)', () => {
-    const world = withDemand(5); // p >= 1 -> tries to admit every tick; only room gates it
+    const world = withDemand(5);
     for (let n = 0; n < 300; n++) {
       tick(world);
       expect(noOverlap(world)).toBe(true);
@@ -85,7 +84,6 @@ describe('FASE 3 — despawn at trip end', () => {
     for (let n = 0; n < 600; n++) tick(world);
     expect(world.metrics.completedTrips).toBeGreaterThan(0);
     expect(world.metrics.totalTravelTime).toBeGreaterThan(0);
-    // Cars start from rest, so average travel time exceeds the free-flow-at-limit lower bound.
     const avg = world.metrics.totalTravelTime / world.metrics.completedTrips;
     expect(avg).toBeGreaterThan(220 / 16);
   });

@@ -7,25 +7,23 @@ import {
 } from '@/engine';
 import type { LaneGeometry, Point } from './geometry';
 
-/** One incoming approach at a junction: its lane and the movements (straight, turn) leaving it. */
 export interface JunctionApproach {
   readonly fromLane: number;
-  readonly conns: number[]; // connection ids, ordered [straight, turn]
+  readonly conns: number[]; // connection ids, ordered [straight, turn] (flipPriority relies on this)
 }
 
-/** An intersection, with everything the UI needs to hit-test it and control it. */
 export interface Junction {
   readonly node: string;
-  readonly pos: Point; // world-space centre (m)
+  readonly pos: Point;
   readonly approaches: JunctionApproach[]; // [H-in, V-in]
 }
 
 export interface Grid {
   readonly graph: LaneGraph;
   readonly geometry: LaneGeometry;
-  readonly sources: number[]; // perimeter entry lanes
-  readonly sinks: number[]; // perimeter exit lanes
-  readonly junctions: Junction[]; // interior intersections
+  readonly sources: number[];
+  readonly sinks: number[];
+  readonly junctions: Junction[];
 }
 
 interface Seg {
@@ -36,17 +34,9 @@ interface Seg {
   readonly endNode: string;
 }
 
-/**
- * Procedurally build a one-way Manhattan grid of `rows` x `cols` intersections. Horizontal
- * streets alternate East/West by row, vertical streets alternate South/North by column, so
- * adjacent streets always run opposite ways. Each street is split into `block`-metre segments
- * (one lane each) plus an entry stub before the grid and an exit stub after it.
- *
- * At every intersection the two incoming streets each connect to the continuing street (straight)
- * and the crossing street (turn). Every movement is given a distinct rank and conflicts with
- * every movement from the *other* incoming lane — an over-declared, collision-free give-way that
- * covers both crossings and merges.
- */
+// A one-way Manhattan grid: streets alternate direction by row/column. Each node over-declares
+// conflicts (every movement conflicts with every movement from the other incoming lane) for a
+// collision-free give-way; distinct ranks per node ⇒ no deadlock.
 export function buildGrid(rows: number, cols: number, block = 90, speedLimit = 16): Grid {
   const B = block;
   const segs: Seg[] = [];
@@ -56,7 +46,6 @@ export function buildGrid(rows: number, cols: number, block = 90, speedLimit = 1
   const vNode = (c: number, y: number): string =>
     y >= 0 && y <= (rows - 1) * B && y % B === 0 ? `i:${y / B},${c}` : `p:V${c}:${y}`;
 
-  // Horizontal streets.
   for (let r = 0; r < rows; r++) {
     const east = r % 2 === 0;
     const y = r * B;
@@ -74,7 +63,6 @@ export function buildGrid(rows: number, cols: number, block = 90, speedLimit = 1
     }
   }
 
-  // Vertical streets.
   for (let c = 0; c < cols; c++) {
     const south = c % 2 === 0;
     const x = c * B;
@@ -92,7 +80,6 @@ export function buildGrid(rows: number, cols: number, block = 90, speedLimit = 1
     }
   }
 
-  // Assign every distinct node string a stable integer id so the graph is self-describing.
   const nodeIds = new Map<string, number>();
   const nodeId = (name: string): number => {
     let id = nodeIds.get(name);
@@ -113,7 +100,6 @@ export function buildGrid(rows: number, cols: number, block = 90, speedLimit = 1
   const find = (axis: 'H' | 'V', where: 'start' | 'end', node: string): number =>
     segs.findIndex((s) => s.axis === axis && (where === 'start' ? s.startNode : s.endNode) === node);
 
-  // Interior intersections, captured as we wire their movements so the UI can control them.
   interface JDesc {
     node: string;
     pos: Point;
@@ -151,8 +137,7 @@ export function buildGrid(rows: number, cols: number, block = 90, speedLimit = 1
 
   const graph = buildLaneGraph(laneSpecs, connSpecs);
 
-  // Resolve each junction's connection indices (straight before turn, for a consistent priority
-  // swap) now that the CSR layout is fixed.
+  // Resolve connection indices with straight before turn — flipPriority swaps them pairwise.
   const junctions: Junction[] = jdescs.map((j) => ({
     node: j.node,
     pos: j.pos,

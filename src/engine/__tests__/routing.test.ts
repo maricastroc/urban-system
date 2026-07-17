@@ -11,16 +11,14 @@ import {
   type World,
 } from '../index';
 
-// A diamond: 0 forks to 1 and 2, both rejoin at 3. Lane 2 is a long detour.
-// Shortest 0 -> 3 must go through lane 1. Lane 4 is isolated (unreachable).
 function diamond() {
   return buildLaneGraph(
     [
-      { length: 10, speedLimit: 16, fromNode: 0, toNode: 1 }, // 0
-      { length: 10, speedLimit: 16, fromNode: 1, toNode: 2 }, // 1 (short)
-      { length: 100, speedLimit: 16, fromNode: 1, toNode: 3 }, // 2 (long detour)
-      { length: 10, speedLimit: 16, fromNode: 2, toNode: 4 }, // 3
-      { length: 10, speedLimit: 16, fromNode: 8, toNode: 9 }, // 4 (isolated)
+      { length: 10, speedLimit: 16, fromNode: 0, toNode: 1 },
+      { length: 10, speedLimit: 16, fromNode: 1, toNode: 2 },
+      { length: 100, speedLimit: 16, fromNode: 1, toNode: 3 },
+      { length: 10, speedLimit: 16, fromNode: 2, toNode: 4 },
+      { length: 10, speedLimit: 16, fromNode: 8, toNode: 9 },
     ],
     [
       { fromLane: 0, toLane: 1 },
@@ -31,13 +29,12 @@ function diamond() {
   );
 }
 
-// A fork: lane 0 (IN) splits into lane 1 (straight) and lane 2 (turn), both sinks.
 function fork() {
   return buildLaneGraph(
     [
-      { length: 100, speedLimit: 16, fromNode: 0, toNode: 1 }, // 0 IN
-      { length: 100, speedLimit: 16, fromNode: 1, toNode: 2 }, // 1 straight (sink)
-      { length: 100, speedLimit: 16, fromNode: 1, toNode: 3 }, // 2 turn (sink)
+      { length: 100, speedLimit: 16, fromNode: 0, toNode: 1 },
+      { length: 100, speedLimit: 16, fromNode: 1, toNode: 2 },
+      { length: 100, speedLimit: 16, fromNode: 1, toNode: 3 },
     ],
     [
       { fromLane: 0, toLane: 1 },
@@ -49,7 +46,7 @@ function fork() {
 describe('routing: computeRoute (Dijkstra)', () => {
   it('finds the shortest path through the cheap branch', () => {
     const g = diamond();
-    expect(computeRoute(g, 0, 3)).toEqual([0, 1, 3]); // via lane 1, not the long lane 2
+    expect(computeRoute(g, 0, 3)).toEqual([0, 1, 3]);
   });
 
   it('returns the trivial path to itself', () => {
@@ -64,8 +61,8 @@ describe('routing: computeRoute (Dijkstra)', () => {
 describe('routing: cars follow their route through a fork', () => {
   const build = (seed: number): World => {
     const w = createWorld(fork(), 64, undefined, seed);
-    const straight = addRoute(w, computeRoute(w.graph, 0, 1)!); // [0, 1]
-    const turn = addRoute(w, computeRoute(w.graph, 0, 2)!); // [0, 2]
+    const straight = addRoute(w, computeRoute(w.graph, 0, 1)!);
+    const turn = addRoute(w, computeRoute(w.graph, 0, 2)!);
     w.demand.push({ lane: 0, rate: 1.5, routes: [straight, turn] });
     return w;
   };
@@ -79,8 +76,8 @@ describe('routing: cars follow their route through a fork', () => {
       if (w.occ.head[1] !== NONE) sawStraight = true;
       if (w.occ.head[2] !== NONE) sawTurn = true;
     }
-    expect(sawStraight).toBe(true); // some cars took 0 -> 1
-    expect(sawTurn).toBe(true); // some cars took 0 -> 2
+    expect(sawStraight).toBe(true);
+    expect(sawTurn).toBe(true);
     expect(w.metrics.completedTrips).toBeGreaterThan(0);
   });
 
@@ -94,7 +91,7 @@ describe('routing: cars follow their route through a fork', () => {
   it('throws for a routeless car on a multi-exit lane (a route is required)', () => {
     const w = createWorld(fork(), 8);
     const id = allocAgent(w.agents);
-    w.agents.s[id] = 100; // sitting at the end of the two-exit lane 0
+    w.agents.s[id] = 100;
     w.agents.v[id] = 5;
     pushBack(w.agents, w.occ, 0, id);
     expect(() => tick(w)).toThrow();

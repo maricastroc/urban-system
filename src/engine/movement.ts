@@ -4,14 +4,6 @@ import { popFront, pushBack } from './laneList';
 import { freeAgent } from './agents';
 import { nextConnection } from './intersection';
 
-/**
- * FASE 3 — advance vehicles across the network and remove finished trips (design doc §G).
- *
- * A car that reaches the end of its lane either crosses the junction onto the connection its
- * route dictates (advancing its route cursor, and carrying any overflow past the zero-length
- * junction point) or, at its destination, completes its trip and is despawned with its travel
- * time recorded.
- */
 export function advance(world: World): void {
   const { agents, occ, graph, metrics } = world;
 

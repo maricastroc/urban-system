@@ -1,6 +1,3 @@
-// Public API of the simulation engine.
-// Import from `@/engine` (or this barrel) rather than reaching into individual modules.
-
 export * from './types';
 export * from './constants';
 export * from './laneGraph';
