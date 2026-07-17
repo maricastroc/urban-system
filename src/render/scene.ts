@@ -21,7 +21,7 @@ import type { LaneGeometry } from './geometry';
 
 const CAPACITY = 256;
 const SEED = 0x9e3779b9;
-const GRID = 3; // rows == cols
+const GRID = 5; // rows == cols — a denser mesh reads as a system, not a diagram
 
 /** Live per-entry demand configuration, sitting on top of the engine's SpawnSource. */
 export interface SourceCtl {

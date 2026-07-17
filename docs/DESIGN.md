@@ -245,3 +245,84 @@ still-valid slices.
   marker, signal heads (green/red) and a priority right-of-way tick per junction, plus entry/exit
   markers and the selection glow. `SimulationCanvas` turns a click into a lane or junction
   selection and drives a contextual inspector; the A/B panel snapshots metrics before and after.
+
+## 17. Experience layer — "mission control" (Etapa 9)
+
+A presentation-only redesign: **no engine, render-data, or API change** — it reads the same
+`World`/`Scene` and calls the same `scene.ts` helpers, so all engine tests pass untouched. The goal
+is a portfolio-grade tool that communicates the engine's power in the first ten seconds.
+
+**Concept.** The map is the protagonist; every panel serves it (a Figma-like canvas + rails model,
+with Linear/Vercel restraint and Arc/Raycast microinteractions). One accent (electric blue) for
+interaction, semantic green/amber/red for status and deltas, Geist Mono for every numeral.
+
+**Layout (`SimulationCanvas.tsx`, `page.tsx`).** A full-viewport shell: a top bar (brand + live
+HUD), a full-bleed map, a right rail (inspector + experiment), a floating instrument dock, and a
+floating guided coach. Collapses to a single column on mobile.
+
+**Design system (`globals.css`).** CSS-variable tokens (surfaces, borders, text ramps, accent,
+status), motion keyframes + easing, an instrument-styled range input, and thin scrollbars. The
+canvas palette in `renderer.ts` mirrors the same hex so chrome and map read as one system.
+
+**Progressive disclosure** (principle: show only what's relevant now):
+- *Inspector empty state* doubles as the legend — three affordances (entries, junctions, roads) and
+  the speed-colour key, instead of a footer paragraph.
+- *Road / entry* → live cars + speed (congestion-toned), close/incident, and (entries) demand +
+  destinations. *Junction* → live queue + signal phase/priority, add-signals / flip-priority.
+
+**Live numerals** update imperatively from the rAF loop (refs → DOM, eased tween) so the HUD counts
+smoothly without 60fps React renders; per-selection stats poll at ~5 Hz; discrete UI stays in React
+state.
+
+**Guided coach.** A dismissible floating stepper — *capture baseline → disrupt → watch & capture B*
+— that auto-advances by observing state (`snapA`, a scenario change, `snapB`). Turns the flow into a
+story with zero documentation.
+
+**A/B as an experiment.** `before → after → impact`: each metric shows A, an arrow, B, and a
+semantic delta (throughput/speed up = good, trip time up = bad) with a signed bar.
+
+**Canvas craft (`renderer.ts`).** A depth-cued backdrop (radial wash + faint dot-grid), roads
+*cased* like map tiles (curb + asphalt) with a **live congestion tint** (asphalt warms as the cars
+on a lane slow), glowing speed-coloured cars, and time-animated selection/hover rings (a `now`
+timestamp threads through `RenderOverlay`).
+
+## 18. The mesh as a living thermal field (Etapa 10)
+
+A visualization-only pass on the canvas — **no engine, data, or interaction change** (`renderer.ts`
+reads the same `Scene`/`cars` and the same `RenderOverlay`; all 51 tests untouched). The goal: the
+mesh should read as a *scientific visualization of a living complex system*, not a street diagram.
+Every drawn element carries information; nothing is decoration.
+
+**One thermal language.** A single ramp — cool (`#78bed8`, flowing) → amber → hot (`#eb5c54`,
+jammed) — colours **cars, roads, junction nodes and flow** alike, so the whole city reads as a heat
+map of stress at a glance (`thermal(t)` in `renderer.ts`; the inspector legend mirrors it).
+
+**Three legible layers.** The read must separate *infrastructure* (roads), *flow* (an activity
+property of the road) and *agents* (cars) — they must never merge. So the layers are ranked by
+**luminance tier**, not just colour: roads sit in a dim mid tier; flow is fainter still; and each car
+is lifted into a distinct top tier — a crisp capsule whose **nose is near-white** (heading + identity)
+with a dark separation shadow + hairline edge that carves it out of any road glow, so it pops on a
+dark road *and* over a hot bloom. Congestion is therefore carried by road **hue**, not bloom (the old
+glow drowned the cars); the flow field is a faint streak, never a bright dot (which read as a car).
+
+**Seven layers, back to front:**
+1. *Backdrop* — radial wash + dot-grid with a slow breathing central glow (off `now`).
+2. *Roads* — a dark curb + neutral asphalt; congestion adds warm hue + a restrained halo (the road
+   is lit, not repainted), so load reads without cars.
+3. *Flow field* — per-lane faint downstream streaks, always present (direction without cars), their
+   speed and colour modulated by the lane's mean speed: free lanes flow cool and fast, jammed lanes
+   crawl and warm. A road property, subordinate to the agents. Count/alpha capped for performance.
+4. *Cars* — the agent tier: a crisp near-white-nosed capsule, dark-separated from the road, with a
+   short directional micro-trail. Immediately pickable even at 20+ cars, without being enlarged.
+5. *Incidents* — a pulsing warning marker.
+6. *Junctions as living nodes* — a ring that breathes with approach activity and **warms with its
+   queue** (a critical junction glows hot); signalized approaches show a green/red dot, unsignalized
+   ones a queue bloom or a priority tick; selection adds an expanding sweep.
+7. *Focus mode* — selecting anything dims the rest of the network to ~0.28 and keeps the target **and
+   its immediate topology** (a junction's approaches + exits, or the selected lane) lit — a spotlight,
+   not a border. `focus` set + `dimOf(lane)` compute this each frame.
+
+**Scale.** The demo grid moved to **5×5** (`scene.ts` `GRID`): denser topology reads as a system, and
+the auto-fit camera keeps elements legible. Engine/behaviour is untouched — only the scene's size.
+
+**Deferred (a new interaction, out of this scope):** selecting a *car* to trace its Dijkstra route.

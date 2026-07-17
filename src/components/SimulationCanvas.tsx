@@ -640,8 +640,9 @@ function InspectorEmpty() {
         ))}
       </div>
       <div className="mt-4 border-t border-[var(--border)] pt-3 text-[11px] leading-relaxed text-[var(--text-3)]">
-        Car colour encodes speed — <span className="text-[var(--bad)]">stopped</span> to{' '}
-        <span className="text-[var(--good)]">free-flow</span>. Roads warm up as they congest.
+        Speed reads as heat — <span style={{ color: 'rgb(235,110,102)' }}>jammed</span> to{' '}
+        <span style={{ color: 'rgb(126,196,220)' }}>free-flow</span>. Roads, junctions and flow pulses
+        warm and slow where the network is under load.
       </div>
     </section>
   );
