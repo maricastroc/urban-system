@@ -1,4 +1,7 @@
+import { Sparkline, type SparkHandle } from './Sparkline';
+
 type SpanRef = React.RefObject<HTMLSpanElement | null>;
+type SparkRef = React.RefObject<SparkHandle | null>;
 
 export function TopBar({
   playing,
@@ -6,12 +9,18 @@ export function TopBar({
   hudFlow,
   hudSpeed,
   hudTrips,
+  flowSpark,
+  speedSpark,
+  freeKmh,
 }: {
   playing: boolean;
   hudCars: SpanRef;
   hudFlow: SpanRef;
   hudSpeed: SpanRef;
   hudTrips: SpanRef;
+  flowSpark: SparkRef;
+  speedSpark: SparkRef;
+  freeKmh: number;
 }) {
   return (
     <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b border-[var(--border)] px-4 md:px-5">
@@ -25,9 +34,9 @@ export function TopBar({
       <div className="flex items-center gap-3 sm:gap-5">
         <HudStat label="Cars" valueRef={hudCars} live={playing} />
         <HudDivider />
-        <HudStat label="Flow /min" valueRef={hudFlow} />
+        <HudStat label="Flow /min" valueRef={hudFlow} spark={<Sparkline ref={flowSpark} color="var(--accent)" />} />
         <HudDivider />
-        <HudStat label="km/h" valueRef={hudSpeed} />
+        <HudStat label="km/h" valueRef={hudSpeed} spark={<Sparkline ref={speedSpark} color="var(--good)" max={freeKmh} />} />
         <HudDivider className="hidden sm:block" />
         <HudStat label="Trips" valueRef={hudTrips} className="hidden sm:flex" />
       </div>
@@ -51,11 +60,13 @@ function HudStat({
   label,
   valueRef,
   live,
+  spark,
   className = '',
 }: {
   label: string;
   valueRef: SpanRef;
   live?: boolean;
+  spark?: React.ReactNode;
   className?: string;
 }) {
   return (
@@ -66,6 +77,9 @@ function HudStat({
           0
         </span>
       </div>
+      {/* Fixed-height trace slot: present on every stat (empty for static ones) so
+          the value numerals and labels stay on one baseline across the HUD. */}
+      <div className="mt-1 hidden h-4 items-end sm:flex">{spark}</div>
       <span className="eyebrow mt-1">{label}</span>
     </div>
   );

@@ -15,6 +15,7 @@ import {
   type SelStats,
 } from './sim/types';
 import { TopBar } from './sim/TopBar';
+import { type SparkHandle } from './sim/Sparkline';
 import { ControlDock } from './sim/ControlDock';
 import { Coach } from './sim/Coach';
 import { Inspector } from './sim/Inspector';
@@ -22,6 +23,7 @@ import { Experiment } from './sim/Experiment';
 
 const SIM_DT = 0.2;
 const MAX_STEPS = 5;
+const SAMPLE_DT = 1.0; // sim-seconds between sparkline samples
 const DEFAULT_DEMAND = 4;
 const LANE_TOL_M = 7;
 const JUNCTION_TOL_PX = 15;
@@ -51,6 +53,16 @@ export function SimulationCanvas() {
   const hudTrips = useRef<HTMLSpanElement>(null);
   const dispRef = useRef({ cars: 0, flow: 0, speed: 0 });
   const flowRef = useRef({ t: 0, trips: 0, val: 0 });
+
+  // Rolling metric sparklines: sampled on sim-time (SAMPLE_DT) so the window is a
+  // fixed 60s regardless of playback speed; updated imperatively via handles.
+  const flowSparkRef = useRef<SparkHandle>(null);
+  const speedSparkRef = useRef<SparkHandle>(null);
+  const sampleRef = useRef({ t: 0, trips: 0 });
+  const freeKmh = useMemo(
+    () => scene.world.graph.speedLimit[0] * scene.world.vparams[0].v0Factor * 3.6,
+    [scene],
+  );
 
   const [playing, setPlaying] = useState(true);
   const [speed, setSpeed] = useState(1);
@@ -84,6 +96,9 @@ export function SimulationCanvas() {
     accRef.current = 0;
     flowRef.current = { t: 0, trips: 0, val: 0 };
     dispRef.current = { cars: 0, flow: 0, speed: 0 };
+    sampleRef.current = { t: 0, trips: 0 };
+    flowSparkRef.current?.reset();
+    speedSparkRef.current?.reset();
   }, [scene]);
 
   const select = useCallback((next: Selection) => {
@@ -122,6 +137,8 @@ export function SimulationCanvas() {
     accRef.current = 0;
     lastTsRef.current = 0;
     flowRef.current = { t: world.time, trips: world.metrics.completedTrips, val: 0 };
+    // Rebase the sampler to the post-jump clock so the next sample isn't a 60s spike.
+    sampleRef.current = { t: world.time, trips: world.metrics.completedTrips };
   }, []);
 
   const hitTest = useCallback((clientX: number, clientY: number): Selection => {
@@ -249,6 +266,16 @@ export function SimulationCanvas() {
       if (hudSpeed.current) hudSpeed.current.textContent = String(Math.round(d.speed));
       if (hudTrips.current) hudTrips.current.textContent = String(st.completedTrips);
 
+      // Feed the rolling sparklines once per SAMPLE_DT of sim-time (paused → no push).
+      const smp = sampleRef.current;
+      const dtS = world.time - smp.t;
+      if (dtS >= SAMPLE_DT) {
+        flowSparkRef.current?.push(((world.metrics.completedTrips - smp.trips) / dtS) * 60);
+        speedSparkRef.current?.push(st.avgSpeedKmh);
+        smp.t = world.time;
+        smp.trips = world.metrics.completedTrips;
+      }
+
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
@@ -273,7 +300,16 @@ export function SimulationCanvas() {
 
   return (
     <div className="flex h-dvh flex-col bg-[var(--bg)] text-[var(--text-1)]">
-      <TopBar playing={playing} hudCars={hudCars} hudFlow={hudFlow} hudSpeed={hudSpeed} hudTrips={hudTrips} />
+      <TopBar
+        playing={playing}
+        hudCars={hudCars}
+        hudFlow={hudFlow}
+        hudSpeed={hudSpeed}
+        hudTrips={hudTrips}
+        flowSpark={flowSparkRef}
+        speedSpark={speedSparkRef}
+        freeKmh={freeKmh}
+      />
 
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         <div className="relative h-[56dvh] min-h-0 flex-1 lg:h-auto">
