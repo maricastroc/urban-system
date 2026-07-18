@@ -29,6 +29,7 @@ import { Coach } from './sim/Coach';
 import { Inspector } from './sim/Inspector';
 import { Experiment } from './sim/Experiment';
 import { Optimizer } from './sim/Optimizer';
+import { WorkflowStep } from './sim/ui';
 
 const SIM_DT = 0.2;
 const MAX_STEPS = 5;
@@ -43,6 +44,10 @@ const fmtClock = (sec: number) => {
 const LANE_TOL_M = 7;
 const JUNCTION_TOL_PX = 15;
 const CAR_TOL_PX = 11;
+// A junction is a fixed control the user deliberately aims at, so it wins over a
+// car unless the car is clearly the closer target — this many px closer. Without
+// it, cars crossing a junction always stole the click at busy intersections.
+const JUNCTION_BIAS_PX = 4;
 const EMPTY_ROUTE: number[] = [];
 const SWEEP_TICKS = 300;
 const SWEEP_CHUNK = 2;
@@ -305,7 +310,6 @@ export function SimulationCanvas({ scenarioParam = null }: { scenarioParam?: str
         bestKey = c.key;
       }
     }
-    if (bestCar >= 0) return { kind: 'car', id: bestCar, key: bestKey };
 
     let bestJ = -1;
     let bestJD = JUNCTION_TOL_PX;
@@ -317,7 +321,13 @@ export function SimulationCanvas({ scenarioParam = null }: { scenarioParam?: str
         bestJ = idx;
       }
     });
-    if (bestJ >= 0) return { kind: 'junction', j: bestJ };
+
+    // Pick the nearest of car vs. junction, but a junction only loses to a car
+    // that is clearly closer — so intersections stay clickable in dense traffic.
+    if (bestJ >= 0 && (bestCar < 0 || bestJD <= bestCarD + JUNCTION_BIAS_PX)) {
+      return { kind: 'junction', j: bestJ };
+    }
+    if (bestCar >= 0) return { kind: 'car', id: bestCar, key: bestKey };
 
     const world = unproject(cam, px, py);
     const hit = nearestLane(scene.geometry, world, LANE_TOL_M);
@@ -474,7 +484,7 @@ export function SimulationCanvas({ scenarioParam = null }: { scenarioParam?: str
   const coachStep = !changed ? 0 : !expResult ? 1 : 2;
 
   return (
-    <div className="flex h-dvh flex-col bg-(--bg) text-(--text-1)">
+    <div className="flex min-h-dvh flex-col bg-(--bg) text-(--text-1) lg:h-dvh">
       <TopBar
         playing={playing}
         hudCars={hudCars}
@@ -484,7 +494,7 @@ export function SimulationCanvas({ scenarioParam = null }: { scenarioParam?: str
       />
 
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-        <div className="relative h-[56dvh] min-h-0 flex-1 lg:h-auto">
+        <div className="relative h-[56dvh] min-h-0 shrink-0 lg:h-auto lg:flex-1">
           <canvas
             ref={canvasRef}
             onClick={onCanvasClick}
@@ -510,30 +520,40 @@ export function SimulationCanvas({ scenarioParam = null }: { scenarioParam?: str
           {!coachDismissed && coachStep < 2 && <Coach step={coachStep} onDismiss={() => setCoachDismissed(true)} />}
         </div>
 
-        <aside className="thin-scroll flex w-full shrink-0 flex-col gap-3 overflow-y-auto border-t border-(--border) p-3 lg:w-92 lg:border-l lg:border-t-0">
+        <aside className="thin-scroll flex w-full shrink-0 flex-col gap-3 border-t border-(--border) p-3 lg:min-h-0 lg:w-92 lg:overflow-y-auto lg:border-l lg:border-t-0">
           <Inspector scene={scene} sel={sel} stats={selStats} bump={bump} onClear={() => select(NONE_SEL)} sinkLabelOf={sinkLabelOf} pulseJunction={pulseJunction} />
           <Telemetry flowSpark={flowSparkRef} speedSpark={speedSparkRef} freeKmh={freeKmh} />
-          <Presets onApply={applyPreset} />
-          <Experiment
-            result={expResult}
-            running={expRunning}
-            duration={expDuration}
-            onDuration={setExpDuration}
-            onRun={runExp}
-            onClearStaged={clearStaged}
-            hasIntervention={changed}
-            highlight={!coachDismissed && coachStep === 1}
-          />
-          <Optimizer
-            running={sweepRunning}
-            done={sweepProg.done}
-            total={sweepProg.total}
-            result={sweepResult}
-            onRun={runSweep}
-            onStage={stageCandidate}
-            isStaged={isCandidateStaged}
-            stale={sweepStale}
-          />
+
+          {/* The experimentation workflow, threaded as ordered steps. */}
+          <div className="flex flex-col">
+            <WorkflowStep n={1} first>
+              <Presets onApply={applyPreset} />
+            </WorkflowStep>
+            <WorkflowStep n={2}>
+              <Experiment
+                result={expResult}
+                running={expRunning}
+                duration={expDuration}
+                onDuration={setExpDuration}
+                onRun={runExp}
+                onClearStaged={clearStaged}
+                hasIntervention={changed}
+                highlight={!coachDismissed && coachStep === 1}
+              />
+            </WorkflowStep>
+            <WorkflowStep n={3} last>
+              <Optimizer
+                running={sweepRunning}
+                done={sweepProg.done}
+                total={sweepProg.total}
+                result={sweepResult}
+                onRun={runSweep}
+                onStage={stageCandidate}
+                isStaged={isCandidateStaged}
+                stale={sweepStale}
+              />
+            </WorkflowStep>
+          </div>
         </aside>
       </div>
 

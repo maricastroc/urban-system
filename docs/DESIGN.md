@@ -160,6 +160,8 @@ uniformly (seeded) and points the agent's `routeStart/End/Idx` at the slice.
   slice + current index), `carProgress` (0..1 by distance), `isSelectedCarLive` (identity via enterTime).
 - `optimize.ts` — the experiment optimizer (§23): `generateCandidates` (signalize/flip-priority per
   junction) + `sweepBaseline`/`sweepCandidate`, each a controlled headless run against one shared baseline.
+- `shareLink.ts` — shareable-URL serialization (§24): `encodeScenario`/`decodeScenario` (a compact,
+  URL-safe string) + `applyScenario` (replay onto a fresh scene via the `scene.ts` helpers). Pure, unit-tested.
 - `grid.ts` — `buildGrid(rows, cols)` **procedurally generates a one-way Manhattan grid**: streets
   alternate direction by row/column; each junction wires straight + turn movements with
   **over-declared per-node conflicts** (every movement conflicts with every movement from another
@@ -267,7 +269,12 @@ interaction, semantic green/amber/red for status and deltas, Geist Mono for ever
 
 **Layout (`SimulationCanvas.tsx`, `page.tsx`).** A full-viewport shell: a top bar (brand + live
 HUD), a full-bleed map, a right rail (inspector + experiment), a floating instrument dock, and a
-floating guided coach. Collapses to a single column on mobile.
+floating guided coach. **Responsive:** desktop (`lg`) locks to the viewport (`h-dvh`) with the map
+as a fixed hero and the rail scrolling internally; below `lg` it flows as a normal document —
+`min-h-dvh`, the map a fixed `56dvh`, and the panels stacked beneath it so the whole page scrolls
+(the rail's `overflow-y-auto` is `lg:`-only, or it would trap the panels in a cramped inner scroll).
+The HUD sheds its lower-priority stats as width shrinks (Trips → `md`, Flow → `sm`), and the
+instrument dock wraps to two rows on a phone (`flex-wrap` → `sm:flex-nowrap`) so no control clips.
 
 **Design system (`globals.css`).** CSS-variable tokens (surfaces, borders, text ramps, accent,
 status), motion keyframes + easing, an instrument-styled range input, and thin scrollbars. The
@@ -294,6 +301,16 @@ semantic delta (throughput/speed up = good, trip time up = bad) with a signed ba
 *cased* like map tiles (curb + asphalt) with a **live congestion tint** (asphalt warms as the cars
 on a lane slow), glowing speed-coloured cars, and time-animated selection/hover rings (a `now`
 timestamp threads through `RenderOverlay`).
+
+**Legibility refinements (since Etapa 16).** Two clarifications so the numbers and the flow can't be
+misread. (1) *Live vs. average speed* — the HUD showed instantaneous km/h and the A/B panel a run
+average, two different "km/h" that looked contradictory. A single green **Live** tag now frames the
+whole top HUD (it is the network *now*), and the A/B secondary metrics sit under an **"Averaged over
+N min"** label — so the two readings are self-evidently different measures. (2) *Workflow as a
+sequence* — Presets → A/B → Optimizer is an ordered story (choose a scenario → measure it → find the
+next best move), so the three right-rail cards are threaded on a numbered stepper spine
+(`WorkflowStep` in `sim/ui.tsx`: a node per card on a continuous left thread), reading top-to-bottom
+instead of as three loose blocks. Presentation-only.
 
 ## 18. The mesh as a living thermal field (Etapa 10)
 
@@ -447,11 +464,14 @@ manual inspector flip.
 Click a car and its **Dijkstra route** lights up across the grid — the payoff of the routing engine (§10)
 made visible. Presentation-only; the route was already computed and stored, this just reads and draws it.
 
-**Selection.** A new `{ kind: 'car'; id; key }` selection. Hit-testing tries cars first (a tight pixel
-tolerance against the *interpolated* positions the loop stashes each frame), then junctions, then lanes —
-cars are the smallest, most specific target. `key` is the agent's `enterTime`: the free-list recycles
-slots, so `(id, key)` pins one specific vehicle and the trace self-clears the moment *its* car arrives
-(even if a new car reuses the slot the next tick). All in `render/carTrace.ts`, pure and unit-tested.
+**Selection.** A new `{ kind: 'car'; id; key }` selection. Hit-testing measures the nearest car (against
+the *interpolated* positions the loop stashes each frame) **and** the nearest junction, then picks the
+closer of the two — but a junction only loses to a car that is `JUNCTION_BIAS_PX` closer. A junction is a
+fixed control the user deliberately aims at, so this keeps intersections clickable in dense traffic (before
+the bias, a car crossing a node always stole the click); lanes are the fallback. `key` is the agent's
+`enterTime`: the free-list recycles slots, so `(id, key)` pins one specific vehicle and the trace
+self-clears the moment *its* car arrives (even if a new car reuses the slot the next tick). All in
+`render/carTrace.ts`, pure and unit-tested.
 
 **The trace (`renderer.ts` `drawRoute`).** The route is the agent's `routeBuffer` slice; `routeIdx` splits
 it into covered (faint accent) and remaining (bright accent, with dashes flowing a→b toward a pulsing
@@ -462,3 +482,41 @@ or junction, no new mode.
 **Vehicle inspector.** Destination (compass label of the route's sink), live speed (congestion-toned), and
 route **progress** (0..1 by distance, `carProgress`) with a bar, plus roads-to-go. It polls at ~5 Hz like
 the other inspectors; when the car arrives, `computeSelStats` returns null and the selection clears.
+
+## 24. Shareable URL (Etapa 16)
+
+A specific run — the network under *this* set of experiments — becomes a link anyone can open. It closes
+the experimentation arc: build → disrupt → measure → optimize → **share the result**.
+
+**What a "scenario" is.** The full `ScenarioControl` overlay plus demand: per-entry rate + allowed
+destinations, closed lanes, incidents, priority flips, and signalized junctions. The engine's seed and grid
+are **constants** in `createScene`, so a run is fully determined by the overlay alone — there is nothing
+else to serialize, and reproduction is exact.
+
+**Semantic, not a state dump (`render/shareLink.ts`).** Because lane and junction ids are stable across
+loads (fixed grid), the overlay is encoded *semantically* — which lanes are closed, which junctions
+signalized — rather than as raw typed arrays:
+
+- `encodeScenario(scene)` reads the live scene into a compact, versioned string. Fields (`d` demand, `x`
+  disabled destinations, `c` closures, `i` incidents, `f` flips, `g` signals) are emitted only when
+  non-default, in a fixed order, using **only RFC-3986 unreserved characters** (`~ . _ -` as the four
+  delimiter levels), so the URL needs no percent-encoding and stays human-diffable.
+- `decodeScenario(raw)` parses it back defensively — a wrong version, a non-numeric field, or any malformed
+  item decodes to `null` (→ the default scene). Unknown field keys are ignored, so a newer encoder stays
+  loosely compatible.
+- `applyScenario(scene, sc)` **replays** the scenario onto a fresh scene by calling the same `scene.ts`
+  helpers the UI uses (`setSourceRate`, `flipPriority`, `toggleSignal`, `closeLane`/`setIncident`), then
+  rebuilds routes once. All ids are bounds-checked, so a stale or hand-edited link can never index out of
+  the grid. The result is byte-identical to a hand-built scene — asserted by `scenarioSignature` round-trips.
+
+**Load path — SSR-correct, no effect.** The server component (`page.tsx`) reads `searchParams` and passes
+the raw string as a prop; `SimulationCanvas` decodes + applies it inside the `useState` **initializer**
+(guarded by a ref so it runs once). So the server-rendered HTML and the first client render compute the
+*same* scene — no hydration flash, and no setState-in-effect. The demand slider derives its initial value
+from the loaded scene (`demandUnitsOf`), and the global-demand effect skips its mount run so it can't
+flatten a link's per-entry rates to uniform.
+
+**Copy control (`ControlDock`).** A link button in the instrument dock: `encodeScenario` the live scene →
+`history.replaceState` (the address bar now *is* the shareable link) → copy to clipboard, with a transient
+check-mark confirmation. Reset and presets clear the `?s=…` param so the URL never contradicts what's on
+screen. Presentation + a pure module; no engine/render-data change.

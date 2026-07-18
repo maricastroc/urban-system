@@ -10,7 +10,7 @@ export default async function Home({
   const scenarioParam = typeof raw === 'string' ? raw : null;
 
   return (
-    <main className="h-dvh">
+    <main className="min-h-dvh lg:h-dvh">
       <SimulationCanvas scenarioParam={scenarioParam} />
     </main>
   );

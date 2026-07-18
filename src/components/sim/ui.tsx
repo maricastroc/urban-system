@@ -79,6 +79,40 @@ export function ActionButton({
   );
 }
 
+/**
+ * One rung of the experimentation workflow — a numbered node on a continuous left
+ * thread, so Presets → A/B → Optimizer read as an ordered sequence, not three
+ * loose cards. The thread is capped at the first/last node so it starts and ends
+ * on a number rather than dangling.
+ */
+export function WorkflowStep({
+  n,
+  first,
+  last,
+  children,
+}: {
+  n: number;
+  first?: boolean;
+  last?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex gap-3">
+      <div className="relative flex w-6 shrink-0 justify-center">
+        <div
+          aria-hidden
+          className="absolute w-px bg-(--border-strong)"
+          style={{ top: first ? 28 : 0, bottom: last ? undefined : 0, height: last ? 28 : undefined }}
+        />
+        <div className="tnum relative z-10 mt-4 grid h-6 w-6 place-items-center rounded-full bg-(--accent-soft) text-[11px] font-bold text-(--accent-2) ring-1 ring-(--accent)/25">
+          {n}
+        </div>
+      </div>
+      <div className={`min-w-0 flex-1 ${last ? '' : 'pb-3'}`}>{children}</div>
+    </div>
+  );
+}
+
 export function LegendGlyph({ color, shape }: { color: string; shape: string }) {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" className="mt-0.5 shrink-0">

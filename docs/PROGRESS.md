@@ -1,7 +1,7 @@
 # Urban Flow — Progress
 
 Built incrementally in small, tested steps ("Etapas"). See `DESIGN.md` for the architecture.
-Status: **15 etapas done, 76 vitest tests passing, typecheck + lint clean.**
+Status: **16 etapas done, 86 vitest tests passing, typecheck + lint clean.**
 
 ## Done
 
@@ -22,6 +22,7 @@ Status: **15 etapas done, 76 vitest tests passing, typecheck + lint clean.**
 | 13 — Experiment presets | One-click **scenario presets** (§21): *Rush hour* (flood every entry), *Close the artery* (shut the central road → new traffic reroutes), *Signalize the centre* (lights on the middle junction). Each stages a **fresh same-seed network** — its demand + its one intervention — ready to watch live or run the A/B on. Deterministic central-junction pick from grid geometry (`render/presets.ts`, unit-tested & idempotent). Also gave the HUD header room to breathe now that the sparklines sit under the numerals. Presentation-only; +6 tests. |
 | 14 — Trace a car's route | Click a car → its **Dijkstra route** lights up across the grid (§22): remaining path in accent with dashes flowing to a pulsing destination marker, covered path faint, the rest of the network dimmed (reusing the spotlight), and an accent halo on the car. A **Vehicle inspector** shows destination, live speed, and route progress. Robust car identity across free-list slot reuse via an `enterTime` key. Pure route/progress helpers (`render/carTrace.ts`); presentation-only; +3 tests. |
 | 15 — Experiment optimizer | The determinism payoff at scale (§23): an **auto-optimizer** that sweeps every single-junction intervention (signalize / flip priority) as a controlled experiment against one shared baseline — same seed, same demand, headless — and ranks them by throughput. A chunked driver keeps the ~50-run search responsive with live progress; the **leaderboard** is clickable → stages the winning fix on the live network (junction selected + spotlit) so you confirm it with the full A/B. Turns the sandbox into a **decision engine**. Pure sweep (`render/optimize.ts`); also fixed `scenarioChanged` to count priority flips (so staged/optimizer flips enable the A/B). +4 tests. |
+| 16 — Shareable URL | Hand a specific run to anyone (§24): a **copy-link control** in the dock serializes the whole experimentation overlay — per-entry demand + destinations, closures, incidents, priority flips, signals — into a compact, URL-safe string; opening that link **rebuilds the exact scene**. Pure `render/shareLink.ts` (`encode`/`decode`/`apply`) serializes *semantically* against the fixed seed + grid (stable lane/junction ids) and replays the same `scene.ts` helpers the UI uses, so a link is byte-identical to a hand-built scene. Loaded via the server component's `searchParams` → a prop → the scene initializer, so SSR and the first client render agree (no hydration flash, no setState-in-effect); malformed links fall back to the default. Closes the experimentation arc. +9 tests. |
 
 ## Key decisions (rationale)
 
@@ -85,6 +86,29 @@ Status: **15 etapas done, 76 vitest tests passing, typecheck + lint clean.**
   against it, so ~50 candidates cost ~51 headless runs, not ~100. It runs chunked over `setTimeout`
   (2 candidates/slice) so a background tab still finishes and the UI shows live progress. Candidates are
   demand-only + one intervention on a fresh same-seed world — the §19 controlled discipline, at scale.
+- **Shareable link = semantic replay, not a state dump (Etapa 16)** — because `createScene` bakes a
+  constant seed + grid, lane/junction ids are stable, so the URL serializes the overlay **semantically**
+  (which lanes/junctions, not raw typed arrays) and rebuilds it by replaying the same `scene.ts` helpers
+  the UI calls. That keeps the payload tiny, uses only RFC-3986 unreserved chars (no percent-encoding),
+  and is byte-identical to a hand-built scene — verified by `scenarioSignature` round-trips. The scene
+  loads through the server component's `searchParams` → a prop → the `useState` initializer (**not** an
+  effect), so the server-rendered HTML and the first client render agree: no hydration flash and no
+  setState-in-effect. Anything malformed decodes to `null` → the default scene, so a stale or hand-edited
+  link can never crash or index out of the grid (all ids are bounds-checked on apply).
+- **Two clarity refinements after Etapa 16 (presentation-only)** — (1) the HUD's instantaneous km/h
+  and the A/B panel's run-average km/h read as a contradiction, so a green **Live** tag now frames the
+  whole top HUD and the A/B secondary metrics carry an **"Averaged over N min"** label — same unit, two
+  clearly different measures. (2) The right-rail trio (Presets → A/B → Optimizer) is a sequence, so a
+  numbered **stepper spine** (`WorkflowStep` in `sim/ui.tsx` — a node per card on a continuous left
+  thread) makes it read top-to-bottom instead of as three loose cards. No engine/render-data change.
+- **Mobile responsiveness + junction hit-test (presentation/interaction only)** — (1) the locked
+  `h-dvh` shell fought small screens (the map's `flex-1` collapsed and the dock overlapped the header),
+  so the layout is now `h-dvh` **only at `lg`**; below that it flows as a normal scrolling document
+  (fixed `56dvh` map, panels stacked, rail scroll `lg:`-only), the HUD sheds stats by breakpoint, and
+  the dock wraps to two rows. (2) Hit-testing picked cars before junctions unconditionally, so a car
+  crossing a node stole every click in dense traffic — it now takes the nearer of car/junction with a
+  small `JUNCTION_BIAS_PX` edge to the junction, verified live at a 154-car saturation (junction with a
+  car dead-centre selects the junction; a mid-road car still selects the car).
 
 ## Quirks / gotchas
 
@@ -120,8 +144,6 @@ npm run dev -- --port 3477   # dev server (open http://localhost:3477)
   eventually a WASM sim core. This is the performance story for the portfolio.
 - **Lane changing (MOBIL)** + multiple lanes per direction (breaks the no-overtaking invariant —
   the per-lane list would need per-lane insertion/removal mid-lane).
-- **Shareable URL** — serialize the scenario overlay + seed into the URL to share a specific run
-  (most useful once deployed).
 - **Onboarding depth** — spotlight the exact road/button the coach references; persist "tour done".
 
 ## Working rule

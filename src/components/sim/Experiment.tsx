@@ -153,6 +153,9 @@ export function Experiment({
                 </span>
               ))}
             </div>
+            {/* Names these as run averages so "26 km/h" here can't be mistaken for the
+                header's live km/h — they measure different things (window vs. now). */}
+            <div className="eyebrow mb-1">Averaged over {mins(result.durationTicks)}</div>
             <div className="flex flex-col gap-1">
               {SECONDARY.map((m) => {
                 const a = m.get(result.baseline);
