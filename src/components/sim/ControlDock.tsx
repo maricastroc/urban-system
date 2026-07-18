@@ -10,6 +10,7 @@ export function ControlDock({
   onDemand,
   onReset,
   onFastForward,
+  clockRef,
 }: {
   playing: boolean;
   onTogglePlay: () => void;
@@ -19,6 +20,7 @@ export function ControlDock({
   onDemand: (d: number) => void;
   onReset: () => void;
   onFastForward: () => void;
+  clockRef: React.RefObject<HTMLSpanElement | null>;
 }) {
   const speeds = [1, 2, 4];
   const idx = speeds.indexOf(speed);
@@ -73,6 +75,16 @@ export function ControlDock({
         </div>
 
         <div className="mx-0.5 h-7 w-px bg-(--border) sm:mx-1" />
+
+        <span
+          ref={clockRef}
+          data-tooltip-id="uf-tip"
+          data-tooltip-content="Simulation time since the seed started"
+          aria-label="Elapsed simulation time"
+          className="tnum w-11 cursor-default text-right text-[13px] font-semibold tracking-tight text-(--text-2)"
+        >
+          0:00
+        </span>
 
         <button
           onClick={onFastForward}

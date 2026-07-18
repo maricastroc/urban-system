@@ -33,6 +33,12 @@ const SIM_DT = 0.2;
 const MAX_STEPS = 5;
 const SAMPLE_DT = 1.0;
 const DEFAULT_DEMAND = 4;
+
+/** Sim seconds → m:ss (elapsed time since the seed started). */
+const fmtClock = (sec: number) => {
+  const t = Math.max(0, Math.floor(sec));
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+};
 const LANE_TOL_M = 7;
 const JUNCTION_TOL_PX = 15;
 const CAR_TOL_PX = 11;
@@ -64,6 +70,7 @@ export function SimulationCanvas() {
   const hudFlow = useRef<HTMLSpanElement>(null);
   const hudSpeed = useRef<HTMLSpanElement>(null);
   const hudTrips = useRef<HTMLSpanElement>(null);
+  const hudClock = useRef<HTMLSpanElement>(null);
   const dispRef = useRef({ cars: 0, flow: 0, speed: 0 });
   const flowRef = useRef({ t: 0, trips: 0, val: 0 });
 
@@ -368,6 +375,7 @@ export function SimulationCanvas() {
       if (hudFlow.current) hudFlow.current.textContent = d.flow.toFixed(1);
       if (hudSpeed.current) hudSpeed.current.textContent = String(Math.round(d.speed));
       if (hudTrips.current) hudTrips.current.textContent = String(st.completedTrips);
+      if (hudClock.current) hudClock.current.textContent = fmtClock(world.time);
 
       const smp = sampleRef.current;
       const dtS = world.time - smp.t;
@@ -429,6 +437,7 @@ export function SimulationCanvas() {
             onDemand={setDemand}
             onReset={reset}
             onFastForward={fastForward}
+            clockRef={hudClock}
           />
 
           {!coachDismissed && coachStep < 2 && <Coach step={coachStep} onDismiss={() => setCoachDismissed(true)} />}
