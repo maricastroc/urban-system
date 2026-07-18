@@ -11,22 +11,30 @@ const SECONDARY: { label: string; get: (s: Stats) => number; fmt: (n: number) =>
 const mins = (ticks: number) => `${Math.round(ticks / 300)} min`;
 const rel = (a: number, b: number) => (a ? (b - a) / Math.abs(a) : 0);
 
+// A verdict only reads as a win/loss when the throughput move is material — both
+// a few trips AND a few percent. A ±1-trip swing over a short run is within the
+// margin, so it stays neutral instead of being trumpeted as an "Improvement".
+const MIN_REL = 0.02;
+const MIN_TRIPS = 2;
+
 function summarize(result: ExperimentResult) {
   const tripsA = result.baseline.completedTrips;
   const tripsB = result.intervention.completedTrips;
+  const dTrips = tripsB - tripsA;
   const tripsRel = rel(tripsA, tripsB);
   const speedRel = rel(result.baseline.avgSpeedKmh, result.intervention.avgSpeedKmh);
-  const up = tripsRel > 0.005;
-  const down = tripsRel < -0.005;
+  const material = Math.abs(dTrips) >= MIN_TRIPS && Math.abs(tripsRel) >= MIN_REL;
+  const up = material && dTrips > 0;
+  const down = material && dTrips < 0;
   const verdict = up
     ? { mark: '✓', label: 'Improvement', tone: 'var(--good)' }
     : down
       ? { mark: '✗', label: 'Regression', tone: 'var(--bad)' }
-      : { mark: '≈', label: 'No change', tone: 'var(--text-3)' };
+      : { mark: '≈', label: dTrips === 0 ? 'No change' : 'Negligible', tone: 'var(--text-3)' };
 
   const tradeoff = up && speedRel < -0.01;
-  const pct = `${tripsRel > 0.005 ? '+' : ''}${Math.round(tripsRel * 100)}%`;
-  return { tripsA, tripsB, verdict, tradeoff, pct };
+  const pct = `${tripsRel > 0.0005 ? '+' : ''}${Math.round(tripsRel * 100)}%`;
+  return { tripsA, tripsB, verdict, tradeoff, pct, marginal: !material && dTrips !== 0 };
 }
 
 export function Experiment({
@@ -125,6 +133,11 @@ export function Experiment({
                   <span className="eyebrow">Trade-off</span>
                   <span className="text-(--good)">↑ throughput</span>
                   <span className="text-(--bad)">↓ avg speed</span>
+                </div>
+              )}
+              {s.marginal && (
+                <div className="mt-2.5 border-t border-(--border) pt-2 text-[11px] leading-snug text-(--text-3)">
+                  Within the margin of a short run — try 5 min for a clearer signal.
                 </div>
               )}
             </div>
