@@ -118,12 +118,14 @@ export function drawScene(
       continue;
     }
     const cong = load[i] ? 1 - meanSF(i) : 0;
+
+    const congVis = cong * cong * (3 - 2 * cong);
     ctx.globalAlpha = d;
-    if (cong > 0.05) {
+    if (congVis > 0.04) {
       ctx.save();
-      ctx.shadowColor = rgba(thermal(1 - cong), 0.28 * cong * d);
-      ctx.shadowBlur = 5.5 * cong;
-      strokeSeg(ctx, A[i], B[i], asphalt(cong), roadW);
+      ctx.shadowColor = rgba(thermal(1 - congVis), 0.34 * congVis * d);
+      ctx.shadowBlur = 6 * congVis;
+      strokeSeg(ctx, A[i], B[i], asphalt(congVis), roadW);
       ctx.restore();
     } else {
       strokeSeg(ctx, A[i], B[i], asphalt(0), roadW);

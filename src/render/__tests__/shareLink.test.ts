@@ -110,10 +110,10 @@ describe('shareLink — scenario serialization', () => {
     expect(decodeScenario('')).toBeNull();
     expect(decodeScenario(null)).toBeNull();
     expect(decodeScenario('garbage')).toBeNull();
-    expect(decodeScenario('2~d4')).toBeNull(); // wrong version
-    expect(decodeScenario('1~dabc')).toBeNull(); // non-numeric rate
-    expect(decodeScenario('1~c1.-2')).toBeNull(); // negative lane
-    expect(decodeScenario('1~i5')).toBeNull(); // incident missing position
+    expect(decodeScenario('2~d4')).toBeNull();
+    expect(decodeScenario('1~dabc')).toBeNull();
+    expect(decodeScenario('1~c1.-2')).toBeNull();
+    expect(decodeScenario('1~i5')).toBeNull();
   });
 
   it('accepts a valid payload and ignores unknown fields', () => {
@@ -126,7 +126,7 @@ describe('shareLink — scenario serialization', () => {
   it('bounds-checks stale ids so an out-of-range link never throws', () => {
     const scene = createScene(0.4);
     const before = scenarioSignature(scene);
-    // Lane / junction ids far beyond this grid.
+
     applyScenario(scene, {
       rates: [0.4],
       destinations: [],

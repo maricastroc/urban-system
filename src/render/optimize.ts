@@ -26,9 +26,7 @@ export function generateCandidates(scene: Scene): Candidate[] {
   scene.junctions.forEach((j, idx) => {
     const signalized = scene.signals[idx]?.enabled === true;
     const flipped = j.approaches.some((ap) => ap.conns.some((ci) => rank[ci] !== conns[ci].rank));
-    // Only offer interventions not already applied on the current network — the
-    // sweep builds on top of the staged scenario, so re-suggesting a live change
-    // would be a no-op. (Signals override give-way, so priority is moot there too.)
+
     if (!signalized) {
       out.push({
         id: `sig:${idx}`,
@@ -72,14 +70,14 @@ function runFor(scene: Scene, ticks: number): void {
 export function sweepBaseline(scene: Scene, ticks: number): Baseline {
   const cfg = captureConfig(scene);
   const w = createScene(0);
-  applyConfig(w, cfg, true); // baseline = the current staged scenario, not a clean grid
+  applyConfig(w, cfg, true);
   runFor(w, ticks);
   return { cfg, stats: sampleStats(w.world) };
 }
 
 export function sweepCandidate(base: Baseline, candidate: Candidate, ticks: number): SweepRow {
   const w = createScene(0);
-  applyConfig(w, base.cfg, true); // each candidate is tested on top of the staged scenario
+  applyConfig(w, base.cfg, true);
   candidate.apply(w);
   runFor(w, ticks);
   const stats = sampleStats(w.world);

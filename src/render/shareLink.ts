@@ -143,7 +143,7 @@ export function decodeScenario(raw: string | null | undefined): SharedScenario |
       } else if (key === 'g') {
         signals = items.map(posInt);
       }
-      // Unknown keys are ignored, so a newer encoder stays loosely compatible.
+      //
     }
   } catch {
     return null;

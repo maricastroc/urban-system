@@ -3,11 +3,14 @@ export type RGB = readonly [number, number, number];
 export const THERMAL_HOT: RGB = [235, 92, 84];
 export const THERMAL_AMBER: RGB = [230, 165, 78];
 export const THERMAL_COOL: RGB = [116, 200, 214];
+const THERMAL_HEAVY: RGB = [236, 132, 66];
 const THERMAL_FREE: RGB = [120, 190, 224];
+
 const STOPS: readonly (readonly [number, RGB])[] = [
   [0.0, THERMAL_HOT],
-  [0.42, THERMAL_AMBER],
-  [0.72, THERMAL_COOL],
+  [0.26, THERMAL_HEAVY],
+  [0.52, THERMAL_AMBER],
+  [0.78, THERMAL_COOL],
   [1.0, THERMAL_FREE],
 ];
 
@@ -24,7 +27,13 @@ export function thermal(t: number): RGB {
 }
 
 export function asphalt(cong: number): string {
-  return rgba(mix([37, 44, 55], [82, 45, 41], clamp01(cong)), 1);
+  const c = clamp01(cong);
+
+  const col =
+    c < 0.66
+      ? mix([37, 44, 55], [96, 50, 45], c / 0.66)
+      : mix([96, 50, 45], [128, 46, 42], (c - 0.66) / 0.34);
+  return rgba(col, 1);
 }
 
 export function mix(a: RGB, b: RGB, t: number): RGB {

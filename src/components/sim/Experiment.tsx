@@ -11,9 +11,6 @@ const SECONDARY: { label: string; get: (s: Stats) => number; fmt: (n: number) =>
 const mins = (ticks: number) => `${Math.round(ticks / 300)} min`;
 const rel = (a: number, b: number) => (a ? (b - a) / Math.abs(a) : 0);
 
-// A verdict only reads as a win/loss when the throughput move is material — both
-// a few trips AND a few percent. A ±1-trip swing over a short run is within the
-// margin, so it stays neutral instead of being trumpeted as an "Improvement".
 const MIN_REL = 0.02;
 const MIN_TRIPS = 2;
 
@@ -112,8 +109,26 @@ export function Experiment({
       {result && (() => {
         const s = summarize(result);
         return (
-          <div className="mt-3">
-            {/* Verdict + hero: the one number the user came for. */}
+          <div className="mt-3 flex flex-col gap-2.5">
+            {/* INPUT — what the experiment tested: the staged change + how long it ran. */}
+            <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-(--border) px-3 py-2">
+              <span className="eyebrow">Tested</span>
+              {result.changes.length ? (
+                result.changes.map((c) => (
+                  <span
+                    key={c}
+                    className="tnum rounded-md bg-(--surface-3) px-2 py-0.5 text-[10px] font-semibold text-(--text-2)"
+                  >
+                    {c}
+                  </span>
+                ))
+              ) : (
+                <span className="text-[11px] text-(--text-3)">demand only</span>
+              )}
+              <span className="tnum ml-auto text-[10px] font-semibold text-(--text-3)">{mins(result.durationTicks)} run</span>
+            </div>
+
+            {/* RESULT — the verdict + its supporting deltas, grouped as one outcome. */}
             <div className="rounded-xl bg-(--surface-2) p-3.5 ring-1 ring-(--border)">
               <div className="flex items-center gap-1.5 text-[11.5px] font-bold" style={{ color: s.verdict.tone }}>
                 <span aria-hidden>{s.verdict.mark}</span>
@@ -130,7 +145,6 @@ export function Experiment({
               </div>
               {s.tradeoff && (
                 <div className="mt-3 flex items-center gap-2.5 border-t border-(--border) pt-2.5 text-[11px] font-semibold">
-                  <span className="eyebrow">Trade-off</span>
                   <span className="text-(--good)">↑ throughput</span>
                   <span className="text-(--bad)">↓ avg speed</span>
                 </div>
@@ -140,32 +154,20 @@ export function Experiment({
                   Within the margin of a short run — try 5 min for a clearer signal.
                 </div>
               )}
+              {/* Run averages — "Avg" labels + the "N min run" tag above keep these
+                  from being mistaken for the header's live km/h (window vs. now). */}
+              <div className="mt-3 flex flex-col gap-1 border-t border-(--border) pt-3">
+                {SECONDARY.map((m) => {
+                  const a = m.get(result.baseline);
+                  const b = m.get(result.intervention);
+                  return (
+                    <ImpactRow key={m.label} label={m.label} a={m.fmt(a)} b={m.fmt(b)} delta={b - a} better={m.better} rel={a ? (b - a) / Math.abs(a) : 0} />
+                  );
+                })}
+              </div>
             </div>
 
-            <div className="mt-3 mb-2 flex flex-wrap items-center gap-1.5">
-              <span className="eyebrow">Baseline → change</span>
-              {result.changes.map((c) => (
-                <span
-                  key={c}
-                  className="tnum rounded-md bg-(--surface-3) px-2 py-0.5 text-[10px] font-semibold text-(--text-2)"
-                >
-                  {c}
-                </span>
-              ))}
-            </div>
-            {/* Names these as run averages so "26 km/h" here can't be mistaken for the
-                header's live km/h — they measure different things (window vs. now). */}
-            <div className="eyebrow mb-1">Averaged over {mins(result.durationTicks)}</div>
-            <div className="flex flex-col gap-1">
-              {SECONDARY.map((m) => {
-                const a = m.get(result.baseline);
-                const b = m.get(result.intervention);
-                return (
-                  <ImpactRow key={m.label} label={m.label} a={m.fmt(a)} b={m.fmt(b)} delta={b - a} better={m.better} rel={a ? (b - a) / Math.abs(a) : 0} />
-                );
-              })}
-            </div>
-            <p className="mt-3 text-[11px] leading-relaxed text-(--text-3)">
+            <p className="text-[11px] leading-relaxed text-(--text-3)">
               Both ran from the same seed for {mins(result.durationTicks)} — the delta is your change, not
               time or noise.
             </p>

@@ -73,11 +73,6 @@ export function applyRoutes(scene: Scene): void {
   const { agents } = world;
   const closed = world.control.laneClosed;
 
-  // addRoute only appends, so recomputing routes on every intervention would
-  // grow routeBuffer without bound — a slow leak that surfaces as GC jank after
-  // a long session. Rebuild the buffer from scratch here. In-flight agents hold
-  // absolute offsets into it, so relocate each live agent's route slice and
-  // remap its indices before the old contents are dropped.
   const oldBuffer = world.routeBuffer;
   const next: number[] = [];
   for (let id = 0; id < agents.capacity; id++) {

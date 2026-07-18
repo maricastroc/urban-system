@@ -36,7 +36,6 @@ const MAX_STEPS = 5;
 const SAMPLE_DT = 1.0;
 const DEFAULT_DEMAND = 4;
 
-/** Sim seconds → m:ss (elapsed time since the seed started). */
 const fmtClock = (sec: number) => {
   const t = Math.max(0, Math.floor(sec));
   return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
@@ -44,15 +43,11 @@ const fmtClock = (sec: number) => {
 const LANE_TOL_M = 7;
 const JUNCTION_TOL_PX = 15;
 const CAR_TOL_PX = 11;
-// A junction is a fixed control the user deliberately aims at, so it wins over a
-// car unless the car is clearly the closer target — this many px closer. Without
-// it, cars crossing a junction always stole the click at busy intersections.
 const JUNCTION_BIAS_PX = 4;
 const EMPTY_ROUTE: number[] = [];
 const SWEEP_TICKS = 300;
 const SWEEP_CHUNK = 2;
 
-/** Build the opening scene — the default grid, or a shared scenario from the URL. */
 function buildInitialScene(scenarioParam: string | null | undefined): Scene {
   const scene = createScene(unitsToRate(DEFAULT_DEMAND));
   const parsed = scenarioParam ? decodeScenario(scenarioParam) : null;
@@ -60,7 +55,6 @@ function buildInitialScene(scenarioParam: string | null | undefined): Scene {
   return scene;
 }
 
-/** Demand-slider units (0–20) that represent a scene's inflow (its peak entry rate). */
 function demandUnitsOf(scene: Scene): number {
   return Math.round(Math.max(0, ...scene.sources.map((s) => s.rate)) * 10);
 }
@@ -68,8 +62,7 @@ function demandUnitsOf(scene: Scene): number {
 export function SimulationCanvas({ scenarioParam = null }: { scenarioParam?: string | null }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Decode the shared scenario (if any) during render, so the server-rendered HTML
-  // and the first client render agree — no hydration flash, no setState-in-effect.
+
   const initialScene = useRef<Scene | null>(null);
   if (initialScene.current === null) initialScene.current = buildInitialScene(scenarioParam);
 
@@ -121,9 +114,7 @@ export function SimulationCanvas({ scenarioParam = null }: { scenarioParam?: str
   const [sweepProg, setSweepProg] = useState({ done: 0, total: 0 });
   const [sweepResult, setSweepResult] = useState<{ baseline: Stats; rows: SweepRow[]; sig: string } | null>(null);
   const [shared, setShared] = useState(false);
-  // The global demand slider sets every entry to one rate, so its mount run would
-  // flatten a shared link's per-entry rates. Skip it — the initial scene already
-  // carries the right rates — and let only later user drags through.
+  const [stagedNeedsRun, setStagedNeedsRun] = useState(false);
   const demandSkip = useRef(true);
 
   useEffect(() => void (playingRef.current = playing), [playing]);
@@ -173,8 +164,6 @@ export function SimulationCanvas({ scenarioParam = null }: { scenarioParam?: str
     return () => window.clearInterval(id);
   }, [sel]);
 
-  // Drop a shared "?s=…" from the address bar once the on-screen scene no longer
-  // matches it (reset / preset), so a reload can't resurrect a stale scenario.
   const clearShareUrl = useCallback(() => {
     if (window.location.search) window.history.replaceState(null, '', window.location.pathname);
   }, []);
@@ -185,6 +174,7 @@ export function SimulationCanvas({ scenarioParam = null }: { scenarioParam?: str
     setSelStats(null);
     setExpResult(null);
     setSweepResult(null);
+    setStagedNeedsRun(false);
     clearShareUrl();
   }, [demand, clearShareUrl]);
 
@@ -197,6 +187,7 @@ export function SimulationCanvas({ scenarioParam = null }: { scenarioParam?: str
     setSelStats(null);
     setExpResult(null);
     setSweepResult(null);
+    setStagedNeedsRun(false);
     clearShareUrl();
   }, [clearShareUrl]);
 
@@ -210,6 +201,7 @@ export function SimulationCanvas({ scenarioParam = null }: { scenarioParam?: str
 
   const runExp = useCallback(() => {
     setExpRunning(true);
+    setStagedNeedsRun(false);
     window.setTimeout(() => {
       setExpResult(runExperiment(sceneRef.current, expDuration));
       setExpRunning(false);
@@ -219,6 +211,7 @@ export function SimulationCanvas({ scenarioParam = null }: { scenarioParam?: str
   const clearStaged = useCallback(() => {
     clearInterventions(sceneRef.current);
     setExpResult(null);
+    setStagedNeedsRun(false);
     bump();
   }, [bump]);
 
@@ -254,6 +247,8 @@ export function SimulationCanvas({ scenarioParam = null }: { scenarioParam?: str
       c.apply(sceneRef.current);
       stagedRef.current = { junction: c.junction, at: performance.now() };
       select({ kind: 'junction', j: c.junction });
+      setSweepResult((r) => (r ? { ...r, sig: scenarioSignature(sceneRef.current) } : r));
+      setStagedNeedsRun(true);
       bump();
     },
     [select, bump],
@@ -263,9 +258,6 @@ export function SimulationCanvas({ scenarioParam = null }: { scenarioParam?: str
     stagedRef.current = { junction: j, at: performance.now() };
   }, []);
 
-  // Is this optimizer candidate's intervention currently live on the network?
-  // Derived from the scene (not from clicks) so it stays truthful across Clear
-  // staged, inspector toggles, and re-staging.
   const isCandidateStaged = useCallback((c: Candidate) => {
     const scene = sceneRef.current;
     if (c.kind === 'signal') return scene.signals[c.junction]?.enabled === true;
@@ -322,8 +314,6 @@ export function SimulationCanvas({ scenarioParam = null }: { scenarioParam?: str
       }
     });
 
-    // Pick the nearest of car vs. junction, but a junction only loses to a car
-    // that is clearly closer — so intersections stay clickable in dense traffic.
     if (bestJ >= 0 && (bestCar < 0 || bestJD <= bestCarD + JUNCTION_BIAS_PX)) {
       return { kind: 'junction', j: bestJ };
     }
@@ -538,7 +528,7 @@ export function SimulationCanvas({ scenarioParam = null }: { scenarioParam?: str
                 onRun={runExp}
                 onClearStaged={clearStaged}
                 hasIntervention={changed}
-                highlight={!coachDismissed && coachStep === 1}
+                highlight={stagedNeedsRun || (!coachDismissed && coachStep === 1)}
               />
             </WorkflowStep>
             <WorkflowStep n={3} last>

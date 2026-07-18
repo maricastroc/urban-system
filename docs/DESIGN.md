@@ -312,6 +312,15 @@ next best move), so the three right-rail cards are threaded on a numbered steppe
 (`WorkflowStep` in `sim/ui.tsx`: a node per card on a continuous left thread), reading top-to-bottom
 instead of as three loose blocks. Presentation-only.
 
+**Closing the loop + separating input from result.** Two more clarity passes on the right rail. (3)
+*Loop cue* — staging an optimizer pick is meant to flow back into the A/B to confirm it, so
+`stageCandidate` sets a `stagedNeedsRun` flag that lights the A/B **Run** button (`hint-ring`) until the
+experiment runs (`runExp` clears it). The Optimizer → A/B → next-move cycle now reads as a cycle, not
+three unrelated cards. (4) *A/B as input → result* — the result panel mixed setup and outcome, so it now
+splits into an **INPUT** strip ("Tested: `{changes}` · `{N} run`") and a filled **RESULT** card (verdict
+% + trips, with the avg-speed/avg-trip deltas grouped under it), footnote as fine print. No metric
+removed — the run length and "Avg" labels still keep the A/B km/h distinct from the header's live km/h.
+
 ## 18. The mesh as a living thermal field (Etapa 10)
 
 A visualization-only pass on the canvas — **no engine, data, or interaction change** (`renderer.ts`
@@ -352,6 +361,16 @@ glow drowned the cars); the flow field is a faint streak, never a bright dot (wh
 the auto-fit camera keeps elements legible. Engine/behaviour is untouched — only the scene's size.
 
 **Since shipped (Etapa 14, §22):** selecting a *car* to trace its Dijkstra route.
+
+**Congestion legibility pass (since Etapa 16).** Making "where is it worst?" readable at a glance,
+without new draw passes (so 60fps holds). Three coordinated tweaks: (1) the `thermal` ramp gains a
+distinct **heavy** orange stop between amber and the critical red, so a worsening road steps
+amber → orange → red instead of easing into red only at a standstill; (2) the per-lane congestion feeds a
+**smoothstep** (`cong·cong·(3−2cong)`) before tint/halo, widening the mid-range so light traffic stays
+calm and heavy traffic ramps hard toward critical; (3) `asphalt()` becomes two-segment — slate → warm →
+a **hot "critical" tier** past ~⅔ load — so a jammed road reads as hot pavement, not a faintly warmer
+grey. Cost is unchanged (colour is O(lanes) per frame; the one pricey op, `shadowBlur`, actually fires on
+fewer lanes now since the smoothstep pushes light load below the halo threshold).
 
 ## 19. Controlled A/B experiments + fast-forward (Etapa 11)
 
@@ -458,6 +477,14 @@ A/B to confirm the prediction. If the best delta is ≤0 (e.g. signals only hurt
 suggests adding load. Staging a **priority flip** now also flips the A/B on — `scenarioChanged` gained a rank
 check (it compared closures/incidents/signals but not effective ranks), which also fixed the same gap for a
 manual inspector flip.
+
+**Stale results vs. staging your own pick.** The leaderboard is measured against one baseline captured at
+run time (`sweepResult.sig = scenarioSignature`), and a `sweepStale` flag warns "Network changed — rerun"
+when the live scene drifts from it. But *staging one of the optimizer's own suggestions* is the intended
+next step, not drift — so `stageCandidate` **folds the staged change into `sweepResult.sig`** (re-reads the
+signature after applying). The board then only reads as stale after an **unrelated** edit (a closure, a
+demand change, a manual priority flip) that genuinely invalidates the ranking — never on the very click the
+tool is nudging you toward. The staged row keeps its ✓, and `Rerun` stays available to re-rank on top.
 
 ## 22. Trace a car's route (Etapa 14)
 

@@ -109,6 +109,20 @@ Status: **16 etapas done, 86 vitest tests passing, typecheck + lint clean.**
   crossing a node stole every click in dense traffic — it now takes the nearer of car/junction with a
   small `JUNCTION_BIAS_PX` edge to the junction, verified live at a 154-car saturation (junction with a
   car dead-centre selects the junction; a mid-road car still selects the car).
+- **Staging an optimizer pick no longer self-flags "stale" (UX)** — the leaderboard warns "Network
+  changed — rerun" when the scene drifts from the sweep's baseline, but it was firing on the *intended*
+  action (clicking the top fix to stage it), competing with that row's own ✓ and pointing to "rerun"
+  when the designed next step is "run the A/B". `stageCandidate` now folds the staged change into
+  `sweepResult.sig`, so the warning is reserved for **unrelated** edits (closure, demand, manual flip).
+  Mariana's call (she picked "don't flag it as stale"). Verified live: stage → no banner (row ✓);
+  then bump demand → banner returns.
+- **Three clarity passes on the right rail + canvas (presentation-only)** — (P2-B) staging an optimizer
+  pick lights the A/B **Run** button (`stagedNeedsRun` → `hint-ring`, cleared on run) so the
+  Optimizer → A/B loop reads as a cycle; (P4) the A/B result splits into an **INPUT** strip (Tested:
+  changes · N run) and a filled **RESULT** card (verdict + deltas), no metric removed; (P3) congestion
+  is more legible — a **heavy** orange tier in the `thermal` ramp, a **smoothstep** on per-lane `cong`,
+  and a two-segment `asphalt()` with a hot **critical** tier, all O(lanes)/frame (60fps intact, and
+  `shadowBlur` fires on fewer lanes). Verified live at ~200-car saturation.
 
 ## Quirks / gotchas
 
