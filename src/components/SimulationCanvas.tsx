@@ -44,7 +44,17 @@ const EMPTY_ROUTE: number[] = [];
 const SWEEP_TICKS = 300;
 const SWEEP_CHUNK = 2;
 
-function buildInitialScene(scenarioParam: string | null | undefined): Scene {
+function buildInitialScene(
+  scenarioParam: string | null | undefined,
+  grid: number | null,
+  cap: number | null,
+): Scene {
+  if (grid != null && grid >= 2) {
+    return createScene(unitsToRate(DEFAULT_DEMAND), {
+      grid: Math.floor(grid),
+      capacity: cap != null && cap > 0 ? Math.floor(cap) : undefined,
+    });
+  }
   const scene = createScene(unitsToRate(DEFAULT_DEMAND));
   const parsed = scenarioParam ? decodeScenario(scenarioParam) : null;
   if (parsed) applyScenario(scene, parsed);
@@ -55,12 +65,22 @@ function demandUnitsOf(scene: Scene): number {
   return Math.round(Math.max(0, ...scene.sources.map((s) => s.rate)) * 10);
 }
 
-export function SimulationCanvas({ scenarioParam = null }: { scenarioParam?: string | null }) {
+export function SimulationCanvas({
+  scenarioParam = null,
+  debug = false,
+  grid = null,
+  cap = null,
+}: {
+  scenarioParam?: string | null;
+  debug?: boolean;
+  grid?: number | null;
+  cap?: number | null;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
 
   const initialScene = useRef<Scene | null>(null);
-  if (initialScene.current === null) initialScene.current = buildInitialScene(scenarioParam);
+  if (initialScene.current === null) initialScene.current = buildInitialScene(scenarioParam, grid, cap);
 
   const [scene, setSceneState] = useState<Scene>(initialScene.current);
   const sceneRef = useRef<Scene>(scene);
@@ -112,6 +132,9 @@ export function SimulationCanvas({ scenarioParam = null }: { scenarioParam?: str
   const [shared, setShared] = useState(false);
   const [stagedNeedsRun, setStagedNeedsRun] = useState(false);
   const demandSkip = useRef(true);
+
+  const perfRef = useRef({ tick: 0, draw: 0, fps: 0, lastPaint: 0 });
+  const perfBoxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => void (playingRef.current = playing), [playing]);
   useEffect(() => void (speedRef.current = speed), [speed]);
@@ -256,6 +279,7 @@ export function SimulationCanvas({ scenarioParam = null }: { scenarioParam?: str
 
   const isCandidateStaged = useCallback((c: Candidate) => {
     const scene = sceneRef.current;
+    if (c.kind === 'greenwave') return c.corridor !== undefined && scene.coordinated[c.corridor] > 0;
     if (c.kind === 'signal') return scene.signals[c.junction]?.enabled === true;
     const { rank } = scene.world.control;
     const conns = scene.world.graph.connections;
@@ -327,12 +351,14 @@ export function SimulationCanvas({ scenarioParam = null }: { scenarioParam?: str
       const prevLane = prevLaneRef.current;
 
       const last = lastTsRef.current || ts;
+      const frameMs = ts - last;
       let dtReal = (ts - last) / 1000;
       lastTsRef.current = ts;
       if (dtReal > 0.1) dtReal = 0.1;
 
       if (playingRef.current) accRef.current += dtReal * speedRef.current;
 
+      const tickT0 = performance.now();
       let steps = 0;
       while (accRef.current >= SIM_DT && steps < MAX_STEPS) {
         prevS.set(agents.s);
@@ -342,6 +368,7 @@ export function SimulationCanvas({ scenarioParam = null }: { scenarioParam?: str
         accRef.current -= SIM_DT;
         steps += 1;
       }
+      const tickMs = performance.now() - tickT0;
       const alpha = Math.min(accRef.current / SIM_DT, 1);
 
       const v0 = world.graph.speedLimit[0] * world.vparams[0].v0Factor;
@@ -380,7 +407,9 @@ export function SimulationCanvas({ scenarioParam = null }: { scenarioParam?: str
         stagedJunction: stagedRef.current.junction,
         stagedAt: stagedRef.current.at,
       };
+      const drawT0 = performance.now();
       drawScene(ctx, canvas.clientWidth, canvas.clientHeight, scene, cars, overlay);
+      const drawMs = performance.now() - drawT0;
 
       const st = sampleStats(world);
       const f = flowRef.current;
@@ -406,6 +435,18 @@ export function SimulationCanvas({ scenarioParam = null }: { scenarioParam?: str
         speedSparkRef.current?.push(st.avgSpeedKmh);
         smp.t = world.time;
         smp.trips = world.metrics.completedTrips;
+      }
+
+      const box = perfBoxRef.current;
+      if (box) {
+        const pf = perfRef.current;
+        if (steps > 0) pf.tick += (tickMs / steps - pf.tick) * 0.2;
+        pf.draw += (drawMs - pf.draw) * 0.1;
+        if (frameMs > 0) pf.fps += (1000 / frameMs - pf.fps) * 0.1;
+        if (ts - pf.lastPaint > 250) {
+          pf.lastPaint = ts;
+          box.textContent = `${cars.length} cars · ${pf.fps.toFixed(0)} fps · tick ${pf.tick.toFixed(1)}ms · draw ${pf.draw.toFixed(1)}ms`;
+        }
       }
 
       raf = requestAnimationFrame(loop);
@@ -466,6 +507,13 @@ export function SimulationCanvas({ scenarioParam = null }: { scenarioParam?: str
           />
 
           {!coachDismissed && coachStep < 2 && <Coach step={coachStep} onDismiss={() => setCoachDismissed(true)} />}
+
+          {debug && (
+            <div
+              ref={perfBoxRef}
+              className="pointer-events-none absolute left-3 top-3 z-30 rounded-md border border-(--border) bg-black/70 px-2.5 py-1 font-mono text-[11px] tabular-nums text-(--text-2)"
+            />
+          )}
         </div>
 
         <aside className="thin-scroll flex w-full shrink-0 flex-col gap-3 border-t border-(--border) p-3 lg:min-h-0 lg:w-92 lg:overflow-y-auto lg:border-l lg:border-t-0">

@@ -5,6 +5,7 @@ import {
   toggleIncident,
   flipPriority,
   toggleSignal,
+  greenWave,
   setSourceRate,
   toggleDestination,
   scenarioSignature,
@@ -97,6 +98,19 @@ describe('shareLink — scenario serialization', () => {
       ap.conns.some((ci) => c.rank[ci] !== conns[ci].rank),
     );
     expect(flipped).toBe(true);
+  });
+
+  it('round-trips a green wave (coordination survives; junctions not double-encoded)', () => {
+    const scene = createScene(0.6);
+    greenWave(scene, 0);
+
+    const encoded = encodeScenario(scene);
+    expect(encoded).toContain('w0');
+
+    const back = roundTrip(scene);
+    expect(scenarioSignature(back)).toBe(scenarioSignature(scene));
+    expect(back.coordinated[0]).toBeGreaterThan(0);
+    for (const j of back.corridors[0].junctions) expect(back.signals[j]?.enabled).toBe(true);
   });
 
   it('a closure changes routing identically after a round-trip', () => {

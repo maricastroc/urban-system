@@ -65,9 +65,17 @@ export function swapRanks(
 export function createSignal(
   phases: readonly (readonly ConnectionId[])[],
   phaseDur: readonly number[],
+  offset = 0,
 ): SignalController {
   const owned = Array.from(new Set(phases.flat()));
-  return { phases, phaseDur, owned, phase: 0, timeInPhase: 0, enabled: true };
+  const cycle = phaseDur.reduce((a, b) => a + b, 0);
+  let t = cycle > 0 ? ((offset % cycle) + cycle) % cycle : 0;
+  let phase = 0;
+  while (phase < phaseDur.length - 1 && t >= phaseDur[phase]) {
+    t -= phaseDur[phase];
+    phase += 1;
+  }
+  return { phases, phaseDur, owned, phase, timeInPhase: t, enabled: true };
 }
 
 function applySignal(control: ScenarioControl, sc: SignalController): void {

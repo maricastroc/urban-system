@@ -18,12 +18,25 @@ export interface Junction {
   readonly approaches: JunctionApproach[];
 }
 
+/**
+ * A one-way arterial: the junctions of a single grid row or column, ordered in
+ * the street's travel direction. The green-wave lever coordinates a corridor's
+ * signals (§25).
+ */
+export interface Corridor {
+  readonly axis: 'H' | 'V';
+  readonly label: string;
+  /** Junction indices, ordered upstream → downstream in the travel direction. */
+  readonly junctions: number[];
+}
+
 export interface Grid {
   readonly graph: LaneGraph;
   readonly geometry: LaneGeometry;
   readonly sources: number[];
   readonly sinks: number[];
   readonly junctions: Junction[];
+  readonly corridors: Corridor[];
 }
 
 interface Seg {
@@ -151,5 +164,19 @@ export function buildGrid(rows: number, cols: number, block = 90, speedLimit = 1
     if (s.endNode.startsWith('p:')) sinks.push(i);
   });
 
-  return { graph, geometry, sources, sinks, junctions };
+  const corridors: Corridor[] = [];
+  for (let r = 0; r < rows; r++) {
+    const js: number[] = [];
+    for (let c = 0; c < cols; c++) js.push(r * cols + c);
+    if (r % 2 === 1) js.reverse();
+    if (js.length >= 2) corridors.push({ axis: 'H', label: `Row ${r + 1}`, junctions: js });
+  }
+  for (let c = 0; c < cols; c++) {
+    const js: number[] = [];
+    for (let r = 0; r < rows; r++) js.push(r * cols + c);
+    if (c % 2 === 1) js.reverse();
+    if (js.length >= 2) corridors.push({ axis: 'V', label: `Col ${c + 1}`, junctions: js });
+  }
+
+  return { graph, geometry, sources, sinks, junctions, corridors };
 }

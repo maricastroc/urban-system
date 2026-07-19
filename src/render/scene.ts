@@ -17,12 +17,19 @@ import {
   type SpawnSource,
   type SignalController,
 } from '@/engine';
-import { buildGrid, type Junction } from './grid';
+import { buildGrid, type Junction, type Corridor } from './grid';
 import type { LaneGeometry } from './geometry';
 
-const CAPACITY = 256;
+export const DEFAULT_CAPACITY = 256;
+export const DEFAULT_GRID = 5;
 const SEED = 0x9e3779b9;
-const GRID = 5;
+
+export interface SceneOptions {
+  /** Grid dimension (rows = cols). Defaults to `DEFAULT_GRID`. */
+  readonly grid?: number;
+  /** Agent-store capacity. Defaults to `DEFAULT_CAPACITY`. */
+  readonly capacity?: number;
+}
 
 export interface SourceCtl {
   readonly lane: number;
@@ -39,11 +46,16 @@ export interface Scene {
   readonly sources: SourceCtl[];
   readonly sinks: number[];
   readonly signals: (SignalController | null)[];
+  readonly corridors: Corridor[];
+  /** Per-corridor green-wave cycle seconds, or 0 when the corridor is uncoordinated. */
+  readonly coordinated: number[];
 }
 
-export function createScene(rate: number): Scene {
-  const { graph, geometry, sources, sinks, junctions } = buildGrid(GRID, GRID);
-  const world = createWorld(graph, CAPACITY, undefined, SEED);
+export function createScene(rate: number, opts: SceneOptions = {}): Scene {
+  const grid = opts.grid ?? DEFAULT_GRID;
+  const capacity = opts.capacity ?? DEFAULT_CAPACITY;
+  const { graph, geometry, sources, sinks, junctions, corridors } = buildGrid(grid, grid);
+  const world = createWorld(graph, capacity, undefined, SEED);
 
   const srcCtls: SourceCtl[] = [];
   for (const lane of sources) {
@@ -63,6 +75,8 @@ export function createScene(rate: number): Scene {
     sources: srcCtls,
     sinks,
     signals: junctions.map(() => null),
+    corridors,
+    coordinated: corridors.map(() => 0),
   };
   applyRoutes(scene);
   return scene;
@@ -151,6 +165,46 @@ export function toggleSignal(scene: Scene, j: number, seconds = DEFAULT_SIGNAL_S
 }
 
 /**
+ * Green-wave a corridor (§25): signalize every junction along it and stagger
+ * each one's phase `offset` by its cumulative travel time from the corridor's
+ * upstream end, so a platoon at street speed rides a wave of greens. The
+ * baseline network is pure priority give-way — there are no signals to
+ * "coordinate", so this both *creates* the signals and phases them. Offsets are
+ * derived from geometry + street speed, so the result is deterministic and
+ * reproducible by the A/B and the optimizer.
+ */
+export function greenWave(scene: Scene, corridorIdx: number, seconds = DEFAULT_SIGNAL_SECONDS): void {
+  const corridor = scene.corridors[corridorIdx];
+  if (!corridor) return;
+  scene.coordinated[corridorIdx] = seconds;
+
+  const graph = scene.world.graph;
+  const { junctions, axis } = corridor;
+  const throughLane = scene.junctions[junctions[0]].approaches[axis === 'H' ? 0 : 1].fromLane;
+  const speed = graph.speedLimit[throughLane] || 1;
+
+  let dist = 0;
+  for (let k = 0; k < junctions.length; k++) {
+    if (k > 0) {
+      const a = scene.junctions[junctions[k - 1]].pos;
+      const b = scene.junctions[junctions[k]].pos;
+      dist += Math.hypot(b.x - a.x, b.y - a.y);
+    }
+
+    setJunctionSignal(scene, junctions[k], seconds, -dist / speed);
+  }
+}
+
+function setJunctionSignal(scene: Scene, j: number, seconds: number, offset: number): void {
+  const existing = scene.signals[j];
+  if (existing) disableSignal(scene.world.control, existing);
+  const [h, v] = scene.junctions[j].approaches;
+  const sc = createSignal([h.conns, v.conns], [seconds, seconds], offset);
+  scene.signals[j] = sc;
+  addSignal(scene.world.control, sc);
+}
+
+/**
  * A cheap string fingerprint of everything the optimizer's baseline depends on
  * (demand + closures + incidents + priority flips + signals). If it differs from
  * the value captured at sweep time, the shown results are stale.
@@ -165,10 +219,12 @@ export function scenarioSignature(scene: Scene): string {
   let flips = '';
   for (let i = 0; i < c.rank.length; i++) if (c.rank[i] !== conns[i].rank) flips += `${i},`;
   const sig = scene.signals.map((s, j) => (s?.enabled ? j : '')).filter((x) => x !== '').join(',');
+  let coord = '';
+  for (let i = 0; i < scene.coordinated.length; i++) if (scene.coordinated[i] > 0) coord += `${i},`;
   const demand = scene.sources
     .map((s) => `${s.rate}:${[...s.allowed].sort((a, b) => a - b).join('.')}`)
     .join('|');
-  return `C${closed}I${inc}F${flips}S${sig}D${demand}`;
+  return `C${closed}I${inc}F${flips}S${sig}W${coord}D${demand}`;
 }
 
 export function clearInterventions(scene: Scene): void {
@@ -177,6 +233,7 @@ export function clearInterventions(scene: Scene): void {
   c.laneClosed.fill(0);
   c.incidentAt.fill(Infinity);
   for (let i = 0; i < c.rank.length; i++) c.rank[i] = conns[i].rank;
+  scene.coordinated.fill(0);
   for (const s of scene.signals) if (s && s.enabled) disableSignal(c, s);
   applyRoutes(scene);
 }
@@ -224,10 +281,13 @@ export interface ScenarioConfig {
   incidentAt: Float32Array;
   rank: Int32Array;
   signals: boolean[];
+  /** Per-corridor green-wave cycle seconds (0 = uncoordinated). */
+  coordinated: number[];
   closed: number;
   incidents: number;
   signalsOn: number;
   priorityFlips: number;
+  coordinatedCount: number;
 }
 
 export function captureConfig(scene: Scene): ScenarioConfig {
@@ -239,6 +299,11 @@ export function captureConfig(scene: Scene): ScenarioConfig {
   for (let i = 0; i < c.incidentAt.length; i++) if (c.incidentAt[i] < Infinity) incidents += 1;
   let closed = 0;
   for (let i = 0; i < c.laneClosed.length; i++) closed += c.laneClosed[i];
+
+  const coordJct = new Set<number>();
+  scene.coordinated.forEach((secs, i) => {
+    if (secs > 0) for (const j of scene.corridors[i].junctions) coordJct.add(j);
+  });
   return {
     rates: scene.sources.map((s) => s.rate),
     allowed: scene.sources.map((s) => new Set(s.allowed)),
@@ -246,10 +311,12 @@ export function captureConfig(scene: Scene): ScenarioConfig {
     incidentAt: c.incidentAt.slice(),
     rank: c.rank.slice(),
     signals: scene.signals.map((s) => s?.enabled === true),
+    coordinated: scene.coordinated.slice(),
     closed,
     incidents,
-    signalsOn: scene.signals.reduce((n, s) => n + (s?.enabled ? 1 : 0), 0),
+    signalsOn: scene.signals.reduce((n, s, j) => n + (s?.enabled && !coordJct.has(j) ? 1 : 0), 0),
     priorityFlips,
+    coordinatedCount: scene.coordinated.reduce((n, s) => n + (s > 0 ? 1 : 0), 0),
   };
 }
 
@@ -262,8 +329,17 @@ export function applyConfig(scene: Scene, cfg: ScenarioConfig, withIntervention:
     scene.world.control.laneClosed.set(cfg.laneClosed);
     scene.world.control.incidentAt.set(cfg.incidentAt);
     scene.world.control.rank.set(cfg.rank);
+
+    const coordinated = new Set<number>();
+    cfg.coordinated.forEach((secs, i) => {
+      if (secs > 0) {
+        greenWave(scene, i, secs);
+        for (const j of scene.corridors[i].junctions) coordinated.add(j);
+      }
+    });
+
     cfg.signals.forEach((on, j) => {
-      if (on) toggleSignal(scene, j);
+      if (on && !coordinated.has(j)) toggleSignal(scene, j);
     });
   }
   applyRoutes(scene);
@@ -284,6 +360,7 @@ export function runExperiment(scene: Scene, durationTicks: number): ExperimentRe
   if (cfg.closed) changes.push(`${cfg.closed} road${cfg.closed > 1 ? 's' : ''} closed`);
   if (cfg.incidents) changes.push(`${cfg.incidents} incident${cfg.incidents > 1 ? 's' : ''}`);
   if (cfg.signalsOn) changes.push(`${cfg.signalsOn} signalized`);
+  if (cfg.coordinatedCount) changes.push(`${cfg.coordinatedCount} green wave${cfg.coordinatedCount > 1 ? 's' : ''}`);
   if (cfg.priorityFlips) changes.push('priority changed');
 
   return { baseline: sampleStats(a.world), intervention: sampleStats(b.world), durationTicks, changes };

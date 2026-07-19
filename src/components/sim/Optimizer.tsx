@@ -4,9 +4,6 @@ import type { SweepRow, Candidate } from '@/render/optimize';
 import { CARD } from './ui';
 import { IconTarget } from './icons';
 
-// Below this many active cars in the 1-min baseline the 5×5 grid is too sparse for a
-// signal/priority change to bite — "no fix helps" then really is a demand problem.
-// Kept conservative so a busy-but-optimal grid is never wrongly told to add load.
 const LOW_LOAD_CARS = 20;
 
 const pct = (d: number) => `${d > 0 ? '+' : ''}${(d * 100).toFixed(0)}%`;
@@ -56,7 +53,7 @@ export function Optimizer({
         <div className="eyebrow">Optimizer</div>
       </div>
       <p className="mb-3 text-[11.5px] leading-snug text-(--text-3)">
-        Tests every remaining signal/priority change on top of your current network — same seed, same demand — and ranks the best next move.
+        Tests every remaining signal, priority and green-wave change on top of your current network — same seed, same demand — and ranks the best next move.
       </p>
 
       {!result && (
@@ -143,7 +140,7 @@ export function Optimizer({
           {staged && (
             <p key={staged.id} className="anim-up mt-2 flex items-center gap-1.5 text-[11.5px] font-semibold text-(--good)">
               <span aria-hidden>✓</span>
-              {staged.kind === 'signal' ? 'Signals staged' : 'Priority flipped'} on the live network
+              {staged.kind === 'signal' ? 'Signals staged' : staged.kind === 'greenwave' ? 'Green wave staged' : 'Priority flipped'} on the live network
             </p>
           )}
 

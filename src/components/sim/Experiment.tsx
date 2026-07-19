@@ -197,10 +197,6 @@ function ImpactRow({
   const tone = improved === null ? 'var(--text-3)' : improved ? 'var(--good)' : 'var(--bad)';
   const pct = Math.max(-1, Math.min(1, rel));
 
-  // display:contents drops each row's cells into the shared parent grid, so the
-  // numeric columns line up across both metrics. The label sits on its own line
-  // (col-span-full) so it can never truncate, wrap, or push the values out of the
-  // card — the failure mode in a narrow panel when everything shared one line.
   return (
     <div className="contents">
       <span className="col-span-full whitespace-nowrap pt-2 text-[12.5px] text-(--text-2)">{label}</span>

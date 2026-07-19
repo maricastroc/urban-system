@@ -6,6 +6,7 @@ import {
   sampleStats,
   toggleSignal,
   flipPriority,
+  greenWave,
   type Scene,
   type Stats,
   type ScenarioConfig,
@@ -14,8 +15,10 @@ import {
 export interface Candidate {
   readonly id: string;
   readonly label: string;
-  readonly kind: 'signal' | 'priority';
+  readonly kind: 'signal' | 'priority' | 'greenwave';
   readonly junction: number;
+  /** Corridor index for a `greenwave` candidate (undefined otherwise). */
+  readonly corridor?: number;
   apply(scene: Scene): void;
 }
 
@@ -47,6 +50,18 @@ export function generateCandidates(scene: Scene): Candidate[] {
         apply: (s) => flipPriority(s, idx),
       });
     }
+  });
+
+  scene.corridors.forEach((cor, i) => {
+    if (scene.coordinated[i] > 0) return;
+    out.push({
+      id: `wave:${i}`,
+      label: `Green-wave ${cor.label}`,
+      kind: 'greenwave',
+      junction: cor.junctions[Math.floor(cor.junctions.length / 2)],
+      corridor: i,
+      apply: (s) => greenWave(s, i),
+    });
   });
   return out;
 }

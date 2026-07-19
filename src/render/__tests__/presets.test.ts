@@ -13,8 +13,8 @@ const signalCount = (scene: ReturnType<typeof createScene>) =>
 const preset = (id: string) => PRESETS.find((p) => p.id === id)!;
 
 describe('experiment presets', () => {
-  it('exposes the three roadmap scenarios', () => {
-    expect(PRESETS.map((p) => p.id)).toEqual(['rush', 'artery', 'signal']);
+  it('exposes the roadmap scenarios', () => {
+    expect(PRESETS.map((p) => p.id)).toEqual(['rush', 'artery', 'signal', 'wave']);
   });
 
   it('picks a deterministic junction nearest the centre', () => {
@@ -55,5 +55,22 @@ describe('experiment presets', () => {
     preset('artery').stage!(scene);
     preset('artery').stage!(scene);
     expect(closedCount(scene)).toBe(1);
+  });
+
+  it('green-wave the artery coordinates one central corridor', () => {
+    const scene = createScene(0);
+    expect(scene.coordinated.every((s) => s === 0)).toBe(true);
+    preset('wave').stage!(scene);
+    expect(scene.coordinated.filter((s) => s > 0).length).toBe(1);
+    expect(signalCount(scene)).toBeGreaterThanOrEqual(2);
+  });
+
+  it('green-wave staging is idempotent', () => {
+    const scene = createScene(0);
+    preset('wave').stage!(scene);
+    const signals = signalCount(scene);
+    preset('wave').stage!(scene);
+    expect(scene.coordinated.filter((s) => s > 0).length).toBe(1);
+    expect(signalCount(scene)).toBe(signals);
   });
 });

@@ -1,7 +1,7 @@
 # Urban Flow — Progress
 
 Built incrementally in small, tested steps ("Etapas"). See `DESIGN.md` for the architecture.
-Status: **16 etapas done, 86 vitest tests passing, typecheck + lint clean.**
+Status: **17 etapas done, 105 vitest tests passing, typecheck + lint clean.**
 
 ## Done
 
@@ -23,6 +23,8 @@ Status: **16 etapas done, 86 vitest tests passing, typecheck + lint clean.**
 | 14 — Trace a car's route | Click a car → its **Dijkstra route** lights up across the grid (§22): remaining path in accent with dashes flowing to a pulsing destination marker, covered path faint, the rest of the network dimmed (reusing the spotlight), and an accent halo on the car. A **Vehicle inspector** shows destination, live speed, and route progress. Robust car identity across free-list slot reuse via an `enterTime` key. Pure route/progress helpers (`render/carTrace.ts`); presentation-only; +3 tests. |
 | 15 — Experiment optimizer | The determinism payoff at scale (§23): an **auto-optimizer** that sweeps every single-junction intervention (signalize / flip priority) as a controlled experiment against one shared baseline — same seed, same demand, headless — and ranks them by throughput. A chunked driver keeps the ~50-run search responsive with live progress; the **leaderboard** is clickable → stages the winning fix on the live network (junction selected + spotlit) so you confirm it with the full A/B. Turns the sandbox into a **decision engine**. Pure sweep (`render/optimize.ts`); also fixed `scenarioChanged` to count priority flips (so staged/optimizer flips enable the A/B). +4 tests. |
 | 16 — Shareable URL | Hand a specific run to anyone (§24): a **copy-link control** in the dock serializes the whole experimentation overlay — per-entry demand + destinations, closures, incidents, priority flips, signals — into a compact, URL-safe string; opening that link **rebuilds the exact scene**. Pure `render/shareLink.ts` (`encode`/`decode`/`apply`) serializes *semantically* against the fixed seed + grid (stable lane/junction ids) and replays the same `scene.ts` helpers the UI uses, so a link is byte-identical to a hand-built scene. Loaded via the server component's `searchParams` → a prop → the scene initializer, so SSR and the first client render agree (no hydration flash, no setState-in-effect); malformed links fall back to the default. Closes the experimentation arc. +9 tests. |
+| — Scale groundwork | Measure-first before the scale leap. Parameterized `createScene(rate, {grid, capacity})` (byte-identical defaults → determinism + all tests intact), a headless sim-compute benchmark (`npm run bench`, `render/bench.ts`, excluded from `npm test`), and a dev perf overlay (`?debug` → live tick-ms vs draw-ms) + scale override (`?grid=N&cap=M`, SSR-passed through `page.tsx`). **Finding:** compute is *not* the wall (~0.13ms/tick at 782 agents ≈ 1500× under the 200ms budget); the single-lane model caps the moving population in the mid-hundreds regardless of capacity, and the Canvas2D render is the first wall (~7ms/frame at 1500 congested cars, super-linear via the congestion `shadowBlur`). So the model (this Etapa's green wave, then multi-lane) gates the scale story; the Worker is architectural, not a perf fix. |
+| 17 — Green-wave | The first richer-model lever (§25) and first engine-logic change since Etapa 8. Baseline is pure give-way, so a green wave **signalizes a whole one-way arterial and staggers its phases** by travel time — a platoon rides a wave of greens. One engine change: `createSignal(…, offset)` seeds a controller into its cycle (bit-for-bit deterministic; `offset=0` unchanged). `buildGrid` emits `corridors` (rows/cols, ordered in travel direction); `greenWave(scene, i)` derives offsets from geometry. Wired into the **whole decision frame**: an optimizer `greenwave` candidate per corridor, corridor-level A/B capture/apply (so the offsets reproduce), `scenarioSignature`/share-link `w` field, and a **"Green-wave the artery"** preset. Verified live: A/B **+4% trips / +66% mean speed** vs. priority at 1.2 cars/s. +13 tests. |
 
 ## Key decisions (rationale)
 
@@ -130,6 +132,13 @@ Status: **16 etapas done, 86 vitest tests passing, typecheck + lint clean.**
   lane priority + the `JUNCTION_BIAS_PX` rule are **unit-tested in Node** (6 cases, incl. the co-located-car
   and bias-boundary fixes). `SimulationCanvas` 553 → 513 lines. Left the RAF loop in place — it is coupled
   to ~15 refs, so extracting it would relocate lines without decoupling, at real regression risk.
+- **Green wave = signalize + coordinate a corridor, captured at corridor level (Etapa 17)** — because the
+  baseline is pure give-way, a green wave *creates* signals along an arterial and phase-offsets them; the
+  offset is the whole value, so it must survive the A/B and optimizer. The determinism-safe way: one engine
+  change (`createSignal(…, offset)` just seeds the cycle; `offset=0` is unchanged, so signal tests pass), and
+  capture the intent as **which corridors are coordinated** (`ScenarioConfig.coordinated`), re-deriving the
+  offsets from geometry on apply — not snapshotting the drifted per-junction phase. The optimizer's 1-min
+  screening under-credits it (coordinated signals need warmup); the 5-min A/B is its fair measure. See §25.
 
 ## Quirks / gotchas
 

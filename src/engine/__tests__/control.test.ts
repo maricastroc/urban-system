@@ -196,3 +196,45 @@ describe('control: traffic signals', () => {
     expect(mustYield(w, ac)).toBe(false);
   });
 });
+
+describe('signal phase offset (green-wave coordination)', () => {
+  it('offset 0 reproduces the original phase-0 / t-0 start (backward compatible)', () => {
+    const sc = createSignal([[0], [1]], [8, 8]);
+    expect(sc.phase).toBe(0);
+    expect(sc.timeInPhase).toBe(0);
+  });
+
+  it('seeds the controller the given seconds into its cycle', () => {
+    const sc = createSignal([[0], [1]], [8, 8], 10);
+    expect(sc.phase).toBe(1);
+    expect(sc.timeInPhase).toBeCloseTo(2, 6);
+  });
+
+  it('normalizes a negative offset into the cycle (a downstream green-wave junction)', () => {
+    const sc = createSignal([[0], [1]], [8, 8], -5.625);
+    expect(sc.phase).toBe(1);
+    expect(sc.timeInPhase).toBeCloseTo(2.375, 5);
+  });
+
+  it('an offset controller stays bit-for-bit deterministic across identical runs', () => {
+    const build = () => {
+      const w = createWorld(crossing(), 64, undefined, 5);
+      const ac = connectionFromTo(w.graph, 0, 1);
+      const bd = connectionFromTo(w.graph, 2, 3);
+      addSignal(w.control, createSignal([[ac], [bd]], [4, 4], 3));
+      w.demand.push({ lane: 0, rate: 0.4 });
+      w.demand.push({ lane: 2, rate: 0.4 });
+      return w;
+    };
+    const a = build();
+    const b = build();
+    for (let n = 0; n < 300; n++) {
+      tick(a);
+      tick(b);
+    }
+    for (let i = 0; i < a.agents.capacity; i++) {
+      expect(a.agents.s[i]).toBe(b.agents.s[i]);
+      expect(a.agents.lane[i]).toBe(b.agents.lane[i]);
+    }
+  });
+});

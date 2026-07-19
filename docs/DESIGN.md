@@ -549,3 +549,40 @@ flatten a link's per-entry rates to uniform.
 `history.replaceState` (the address bar now *is* the shareable link) → copy to clipboard, with a transient
 check-mark confirmation. Reset and presets clear the `?s=…` param so the URL never contradicts what's on
 screen. Presentation + a pure module; no engine/render-data change.
+
+## 25. Green-wave corridor coordination (Etapa 17)
+
+The first *richer-model* lever, and the first engine-logic change since the Scenario Control layer. The
+baseline network is **pure priority give-way** — no junction is signalized until a user, a preset, the
+optimizer, or a shared link turns one on. So a "green wave" here is not "coordinate existing signals"
+(there are none): it **signalizes an entire one-way arterial and staggers its phases** so a platoon at
+street speed rides a wave of greens. It is strictly richer than the per-junction *signalize* lever — on a
+priority network an isolated signal often *hurts*, while a coordinated corridor can win under load (the
+A/B measures ~+4% trips / ~+66% mean speed on the central 5-junction corridor at 1.2 cars/s·entry).
+
+**The one engine change (`control.ts`).** `createSignal(phases, phaseDur, offset = 0)` gains an `offset`:
+it seeds the controller `offset` seconds into its own cycle (normalized, then walked to a `phase` +
+`timeInPhase`). The whole cycle just shifts, so the sim stays **bit-for-bit deterministic**; `offset === 0`
+reproduces the original phase-0 / t-0 start exactly, so every prior signal test passes unchanged.
+
+**Corridors (`grid.ts`).** `buildGrid` now emits `corridors: Corridor[]` — one per grid row and column,
+its junction indices **ordered upstream→downstream** in the street's one-way travel direction (row/column
+parity picks E/W, S/N). This is the unit a green wave (and its optimizer candidate) operates on.
+
+**The lever (`scene.ts`).** `greenWave(scene, corridorIdx, seconds?)` signalizes every junction on the
+corridor with an offset of `-cumulativeDistance / streetSpeed` (from junction geometry), so each downstream
+junction turns green later by its travel time. `Scene.coordinated[]` (per corridor) records the intent.
+
+**Preserving the decision frame (non-negotiable).** The offset *is* the whole value of a green wave, so the
+A/B and optimizer must reproduce it — else they'd measure uncoordinated signals. Coordination is therefore
+captured at **corridor level** (`ScenarioConfig.coordinated`), and `applyConfig` re-derives the offsets from
+geometry (deterministic), applying coordinated corridors first and then standalone signals for junctions no
+corridor owns. `scenarioSignature` gains a `W` field; the share-link gains a `w` field (green-waved corridor
+ids, with those junctions excluded from `g` so they're never double-encoded). The optimizer adds a
+`greenwave` candidate per uncoordinated corridor — so the auto-search can *discover* coordinating an artery.
+A **"Green-wave the artery"** preset coordinates the central corridor for a one-click demo.
+
+**Screening caveat (honest).** The optimizer's 1-min screening (`SWEEP_TICKS = 300`) under-credits a green
+wave: coordinated signals need warmup, so quicker-acting priority flips out-rank it in the short window even
+though the full 5-min A/B shows the wave ahead. A longer screening (or a two-tier re-rank of the top-k) would
+value it fairly — a future tuning knob, deliberately left as-is for now.

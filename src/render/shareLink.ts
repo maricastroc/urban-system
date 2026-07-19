@@ -3,6 +3,7 @@ import {
   setSourceRate,
   flipPriority,
   toggleSignal,
+  greenWave,
   applyRoutes,
   type Scene,
 } from './scene';
@@ -21,7 +22,7 @@ import {
  * RFC-3986 unreserved characters — no percent-encoding needed):
  *
  *   payload := "1" ("~" field)*
- *   field   := key body            key ∈ {d,x,c,i,f,g}
+ *   field   := key body            key ∈ {d,x,c,i,f,g,w}
  *   body    := item ("." item)*
  *
  *   d  demand     one int (uniform) OR one per source, as round(rate*10)
@@ -29,7 +30,8 @@ import {
  *   c  closed     lane ids
  *   i  incidents  "<lane>_<s10>"  (s10 = round(s*10))
  *   f  flips      junction ids with flipped give-way priority
- *   g  signals    signalized junction ids
+ *   g  signals    standalone signalized junction ids (excludes green-waved ones)
+ *   w  waves      green-waved corridor ids (default cycle length)
  *
  * Only non-empty fields are emitted, in a fixed order, so the encoding is
  * deterministic. Anything malformed decodes to `null` (→ the default scene).
@@ -51,8 +53,10 @@ export interface SharedScenario {
   readonly incidents: { readonly lane: number; readonly s: number }[];
   /** Junctions with flipped give-way priority. */
   readonly flips: number[];
-  /** Signalized junctions. */
+  /** Standalone signalized junctions (excludes those inside a green-waved corridor). */
   readonly signals: number[];
+  /** Green-waved corridor ids. */
+  readonly coordinated?: number[];
 }
 
 function posInt(v: string): number {
@@ -94,11 +98,21 @@ export function encodeScenario(scene: Scene): string {
   });
   if (flips.length) parts.push('f' + flips.join('.'));
 
+  const coordJct = new Set<number>();
+  const coordinated: number[] = [];
+  for (let i = 0; i < scene.coordinated.length; i++) {
+    if (scene.coordinated[i] > 0) {
+      coordinated.push(i);
+      for (const j of scene.corridors[i].junctions) coordJct.add(j);
+    }
+  }
+
   const signals: number[] = [];
   scene.signals.forEach((s, idx) => {
-    if (s?.enabled) signals.push(idx);
+    if (s?.enabled && !coordJct.has(idx)) signals.push(idx);
   });
   if (signals.length) parts.push('g' + signals.join('.'));
+  if (coordinated.length) parts.push('w' + coordinated.join('.'));
 
   return parts.join('~');
 }
@@ -115,6 +129,7 @@ export function decodeScenario(raw: string | null | undefined): SharedScenario |
   const incidents: { lane: number; s: number }[] = [];
   let flips: number[] = [];
   let signals: number[] = [];
+  let coordinated: number[] = [];
 
   try {
     for (let k = 1; k < parts.length; k++) {
@@ -142,6 +157,8 @@ export function decodeScenario(raw: string | null | undefined): SharedScenario |
         flips = items.map(posInt);
       } else if (key === 'g') {
         signals = items.map(posInt);
+      } else if (key === 'w') {
+        coordinated = items.map(posInt);
       }
       //
     }
@@ -149,7 +166,7 @@ export function decodeScenario(raw: string | null | undefined): SharedScenario |
     return null;
   }
 
-  return { rates, destinations, closed, incidents, flips, signals };
+  return { rates, destinations, closed, incidents, flips, signals, coordinated };
 }
 
 /**
@@ -181,6 +198,9 @@ export function applyScenario(scene: Scene, sc: SharedScenario): void {
   }
   for (const j of sc.signals) {
     if (j >= 0 && j < scene.junctions.length && scene.signals[j]?.enabled !== true) toggleSignal(scene, j);
+  }
+  for (const i of sc.coordinated ?? []) {
+    if (i >= 0 && i < scene.corridors.length) greenWave(scene, i);
   }
 
   applyRoutes(scene);

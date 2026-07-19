@@ -3,13 +3,24 @@ import { createScene } from '@/render/scene';
 import { generateCandidates, sweepBaseline, sweepCandidate } from '@/render/optimize';
 
 describe('experiment optimizer', () => {
-  it('generates a signalize + a flip-priority candidate for every junction', () => {
+  it('generates signalize + flip-priority per junction and green-wave per corridor', () => {
     const scene = createScene(0.5);
     const cands = generateCandidates(scene);
-    expect(cands.length).toBe(scene.junctions.length * 2);
+    expect(cands.length).toBe(scene.junctions.length * 2 + scene.corridors.length);
     expect(cands.filter((c) => c.kind === 'signal').length).toBe(scene.junctions.length);
     expect(cands.filter((c) => c.kind === 'priority').length).toBe(scene.junctions.length);
+    expect(cands.filter((c) => c.kind === 'greenwave').length).toBe(scene.corridors.length);
     expect(cands.every((c) => c.junction >= 0 && c.junction < scene.junctions.length)).toBe(true);
+  });
+
+  it('measures a green-wave candidate deterministically against the shared baseline', () => {
+    const build = () => {
+      const scene = createScene(0.8);
+      const base = sweepBaseline(scene, 200);
+      const wave = generateCandidates(scene).find((c) => c.kind === 'greenwave')!;
+      return sweepCandidate(base, wave, 200).stats.completedTrips;
+    };
+    expect(build()).toBe(build());
   });
 
   it('is deterministic — identical baseline and candidate deltas across runs', () => {
