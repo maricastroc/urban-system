@@ -34,6 +34,10 @@
   🔗 <strong>Live demo:</strong> <a href="urban-flow.marianacastro.dev/">urban-flow.marianacastro.dev</a>
 </p>
 
+<p align="center">
+  <img src="docs/desktop.png" alt="AccessCheck" width="800" />
+</p>
+
 <br/>
 
 ## 🚗 Features

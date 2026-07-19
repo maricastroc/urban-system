@@ -234,7 +234,7 @@ export function SimulationCanvas({
     expResult, expRunning, expDuration, setExpDuration, runExp, clearStaged,
     sweepRunning, sweepProg, sweepResult, runSweep, stageCandidate, isCandidateStaged,
     stagedNeedsRun, refoldSweepSig, resetExperiments,
-  } = useExperiments({ sceneRef, simClientRef, stagePendingRef, stagedRef, mutate, select, bump });
+  } = useExperiments({ sceneRef, simClientRef, stagePendingRef, stagedRef, mutate, bump });
 
   const reset = useCallback(() => {
     const fresh = createScene(unitsToRate(demand), { grid: network.grid, capacity: network.capacity });

@@ -11,7 +11,6 @@ import { generateCandidates, type SweepRow, type Candidate } from '@/render/opti
 import { runSweepPool } from './sweepPool';
 import type { SimMutation } from './simProtocol';
 import type { SimClient } from './simClient';
-import type { Selection } from './types';
 
 /** One optimizer sweep screens each candidate over this many ticks (§23/§26). */
 const SWEEP_TICKS = 300;
@@ -35,7 +34,6 @@ export interface UseExperimentsArgs {
   /** The just-staged junction + timestamp, for the map's one-shot pulse. */
   stagedRef: React.RefObject<{ junction: number; at: number }>;
   mutate: (m: SimMutation) => void;
-  select: (sel: Selection) => void;
   bump: () => void;
 }
 
@@ -56,7 +54,6 @@ export function useExperiments({
   stagePendingRef,
   stagedRef,
   mutate,
-  select,
   bump,
 }: UseExperimentsArgs) {
   const sweepingRef = useRef(false);
@@ -117,10 +114,9 @@ export function useExperiments({
         bump();
       }
       stagedRef.current = { junction: c.junction, at: performance.now() };
-      select({ kind: 'junction', j: c.junction });
       setStagedNeedsRun(true);
     },
-    [simClientRef, stagePendingRef, stagedRef, sceneRef, select, bump],
+    [simClientRef, stagePendingRef, stagedRef, sceneRef, bump],
   );
 
   const isCandidateStaged = useCallback(
