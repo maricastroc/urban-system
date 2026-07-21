@@ -397,7 +397,8 @@ export function SimulationCanvas({
   );
 
   const changed = scenarioChanged(scene);
-  const sweepStale = !!sweepResult && scenarioSignature(scene) !== sweepResult.sig;
+  const sweepStale =
+    !!sweepResult && (scenarioSignature(scene) !== sweepResult.sig || expDuration !== sweepResult.duration);
   const coachStep = !demoStarted ? 0 : !expResult ? 1 : 2;
   const waveResult = expResult
     ? {
@@ -497,6 +498,7 @@ export function SimulationCanvas({
                 done={sweepProg.done}
                 total={sweepProg.total}
                 result={sweepResult}
+                duration={expDuration}
                 onRun={runSweep}
                 onStage={stageCandidate}
                 isStaged={isCandidateStaged}

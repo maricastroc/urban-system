@@ -69,7 +69,7 @@ export function focusDimmer(scene: Scene, overlay: RenderOverlay): (lane: number
     }
   }
   for (const lane of overlay.carRoute) focus.add(lane);
-  return (lane) => (hasSel && !focus.has(lane) ? 0.28 : 1);
+  return (lane) => (hasSel && !focus.has(lane) ? 0.5 : 1);
 }
 
 export function drawScene(

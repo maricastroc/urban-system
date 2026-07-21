@@ -12,10 +12,7 @@ import { runExperimentPool } from './experimentPool';
 import type { SimMutation } from './simProtocol';
 import type { SimClient } from './simClient';
 
-/** One optimizer sweep screens each candidate over this many ticks (§23/§26). */
-const SWEEP_TICKS = 300;
-
-export type SweepResultState = { baseline: Stats; rows: SweepRow[]; sig: string };
+export type SweepResultState = { baseline: Stats; rows: SweepRow[]; sig: string; duration: number };
 
 /** Map an optimizer candidate to its equivalent worker command. */
 function mutationOfCandidate(c: Candidate): SimMutation | null {
@@ -90,14 +87,14 @@ export function useExperiments({
     setSweepRunning(true);
     setSweepResult(null);
     setSweepProg({ done: 0, total: candidates.length + 1 });
-    runSweepPool(cfg, candidates, SWEEP_TICKS, (done, total) => setSweepProg({ done, total })).then(
+    runSweepPool(cfg, candidates, expDuration, (done, total) => setSweepProg({ done, total })).then(
       ({ baseStats, rows }) => {
-        setSweepResult({ baseline: baseStats, rows, sig });
+        setSweepResult({ baseline: baseStats, rows, sig, duration: expDuration });
         setSweepRunning(false);
         sweepingRef.current = false;
       },
     );
-  }, [sceneRef]);
+  }, [sceneRef, expDuration]);
 
   const stageCandidate = useCallback(
     (c: Candidate) => {

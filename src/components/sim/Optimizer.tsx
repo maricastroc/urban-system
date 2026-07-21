@@ -8,12 +8,14 @@ const LOW_LOAD_CARS = 20;
 
 const pct = (d: number) => `${d > 0 ? '+' : ''}${(d * 100).toFixed(0)}%`;
 const toneOf = (d: number) => (d > 0.005 ? 'var(--good)' : d < -0.005 ? 'var(--bad)' : 'var(--text-3)');
+const mins = (ticks: number) => `${Math.round(ticks / 300)} min`;
 
 export function Optimizer({
   running,
   done,
   total,
   result,
+  duration,
   onRun,
   onStage,
   isStaged,
@@ -23,6 +25,7 @@ export function Optimizer({
   done: number;
   total: number;
   result: { baseline: Stats; rows: SweepRow[]; sig: string } | null;
+  duration: number;
   onRun: () => void;
   onStage: (c: Candidate) => void;
   isStaged: (c: Candidate) => boolean;
@@ -92,7 +95,7 @@ export function Optimizer({
 
           {stale && (
             <div className="mb-2 rounded-lg bg-(--warn)/10 px-2.5 py-1.5 text-[11px] leading-snug text-(--warn) ring-1 ring-(--warn)/25">
-              Network changed — these results are from an earlier configuration. Rerun to update them.
+              Network or A/B duration changed — these results are from an earlier configuration. Rerun to update them.
             </div>
           )}
 
@@ -145,7 +148,7 @@ export function Optimizer({
           )}
 
           <p className="mt-3 text-[11px] leading-relaxed text-(--text-3)">
-            Δ trips over 1 sim-min vs. your current network ({result.baseline.completedTrips} trips). Click a fix to stage it, then run the A/B to confirm.
+            Δ trips over {mins(duration)} vs. your current network ({result.baseline.completedTrips} trips) — the same window as your A/B. Click a fix to stage it, then run the A/B to confirm.
           </p>
         </div>
       )}

@@ -9,6 +9,9 @@ export function Presets({ onApply }: { onApply: (preset: Preset) => void }) {
         <IconBolt />
         <div className="eyebrow">Scenario presets</div>
       </div>
+      <p className="mb-3 text-[11px] leading-relaxed text-(--text-3)">
+        Applying a preset clears the current traffic and restarts from an empty network — this keeps the A/B comparison reproducible.
+      </p>
       <div className="flex flex-col gap-2">
         {PRESETS.map((p) => (
           <button
@@ -24,9 +27,6 @@ export function Presets({ onApply }: { onApply: (preset: Preset) => void }) {
           </button>
         ))}
       </div>
-      <p className="mt-3 text-[11px] leading-relaxed text-(--text-3)">
-        One click stages a fresh network — then watch it, or run the A/B.
-      </p>
     </section>
   );
 }
